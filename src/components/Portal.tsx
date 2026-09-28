@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   Link2,
   List,
+  LogOut,
   Menu,
   MessageCircle,
   Plus,
@@ -531,7 +532,25 @@ export default function Portal({
         </nav>
         <div className="sidebar-bottom">
           <div className="help-card"><span className="help-mark">?</span><div><strong>Precisa de ajuda?</strong><p>Fale com a equipe Nurea pelo WhatsApp.</p></div></div>
-          {role === "equipe" && <button className="restore-button" onClick={restoreDemo}><RotateCcw size={15} /> Restaurar demonstração</button>}
+          {role === "equipe" && (
+            <div style={{ display: "grid", gap: "6px", marginTop: "14px" }}>
+              <button
+                type="button"
+                className="restore-button"
+                onClick={async () => {
+                  if (!window.confirm("Deseja sair do painel de administração?")) return;
+                  await fetch("/api/admin/logout", { method: "POST" });
+                  window.location.reload();
+                }}
+                style={{ color: "#e89980", cursor: "pointer" }}
+              >
+                <LogOut size={14} /> Sair do painel
+              </button>
+              <button type="button" className="restore-button" onClick={restoreDemo} style={{ cursor: "pointer" }}>
+                <RotateCcw size={14} /> Restaurar demonstração
+              </button>
+            </div>
+          )}
           <p>PORTAL DE CONTEÚDOS · NUREA</p>
         </div>
       </aside>
