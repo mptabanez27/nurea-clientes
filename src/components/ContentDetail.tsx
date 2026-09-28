@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MessageCircle, Paperclip, Play, Plus, Send, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Heart, MessageCircle, MoreHorizontal, Paperclip, Play, Plus, Send, X } from "lucide-react";
 import MediaPreview from "./MediaPreview";
 import { Attachment, Content, ContentFormat, ContentStatus, formatActivityDate, formatLabel, statusLabel, todayStamp } from "@/lib/demo";
 import { deleteLocalFile, getLocalFile, saveLocalFile } from "@/lib/localFiles";
@@ -10,6 +10,8 @@ import { mediaAccept, mediaIsCompatible, validateMediaFiles } from "@/lib/media"
 type Props = {
   content: Content;
   clientName: string;
+  clientLogo?: string;
+  clientSlug?: string;
   role: "cliente" | "equipe";
   position: number;
   total: number;
@@ -25,6 +27,15 @@ function fullDate(date: string) {
   const formatted = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
+function getInstagramHandle(name: string): string {
+  const clean = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9_.]/g, "")
+    .slice(0, 30);
+  return clean || "usuario";
+}
 function revision(content: Content, note: string): Content {
   const version = content.version + 1;
   return {
@@ -35,12 +46,16 @@ function revision(content: Content, note: string): Content {
   };
 }
 
-export default function ContentDetail({ content, clientName, role, position, total, onClose, onDelete, onNavigate, onUpdate, onAction }: Props) {
+export default function ContentDetail({ content, clientName, clientLogo, clientSlug, role, position, total, onClose, onDelete, onNavigate, onUpdate, onAction }: Props) {
   const captionRef = useRef<HTMLDivElement>(null);
   const attachmentsRef = useRef<HTMLDivElement>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(362);
+  const [saved, setSaved] = useState(false);
+  const [following, setFollowing] = useState(false);
   const [editCategory, setEditCategory] = useState(content.category);
   const [editPublishedUrl, setEditPublishedUrl] = useState(content.publishedUrl ?? "");
   const [editShared, setEditShared] = useState(!!content.sharedToStory);
@@ -247,6 +262,8 @@ export default function ContentDetail({ content, clientName, role, position, tot
   const selectedAttachment = content.attachments?.find((item) => item.id === selectedAttachmentId) ?? null;
 
   const coverVideo = selectedAttachment?.type.startsWith("video/") ? selectedAttachment : !selectedAttachment ? content.media?.find(item => item.type.startsWith("video/")) : undefined;
+  const instagramHandle = getInstagramHandle(clientSlug || clientName);
+  const totalSlides = content.media?.length ?? content.slides?.length ?? 1;
 
   return <div className="modal-backdrop detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={dialogRef} className="content-detail" role="dialog" aria-modal="true" aria-label={`Publicação: ${content.title}`}>
@@ -261,11 +278,171 @@ export default function ContentDetail({ content, clientName, role, position, tot
           {role === "equipe" && <button className="detail-inline-edit" onClick={() => { startEdit(); }}>Editar data</button>}
         </div>
         <div className="detail-quick-links"><button onClick={() => captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Ver legenda</button><button onClick={() => attachmentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Anexos ({content.attachments?.length ?? 0})</button>{selectedAttachment && <button onClick={() => setSelectedAttachmentId(null)}>Voltar à publicação</button>}</div>
-        <div className="content-detail-cover">
-          <div className={`content-detail-art ${content.format === "story" ? "is-story" : ""}`}>
-            <MediaPreview content={content} brand={clientName} mode="detail" slideIndex={slideIndex} attachment={selectedAttachment} />
+        <div className="content-detail-preview-col">
+          <div className="insta-post-card">
+            {/* Header */}
+            <div className="insta-header">
+              <div className="insta-header-user">
+                <div className="insta-avatar">
+                  {clientLogo ? (
+                    <img src={clientLogo} alt={clientName} />
+                  ) : (
+                    <span>{clientName.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>
+                  )}
+                </div>
+                <div className="insta-user-meta">
+                  <span className="insta-username">{instagramHandle}</span>
+                  <span className="insta-location">Áudio original · {clientName}</span>
+                </div>
+              </div>
+              <div className="insta-header-actions">
+                <button
+                  type="button"
+                  className={`insta-follow-btn ${following ? "is-following" : ""}`}
+                  onClick={() => setFollowing((prev) => !prev)}
+                >
+                  {following ? "Seguindo" : "Seguir"}
+                </button>
+                <button type="button" className="insta-more-btn" aria-label="Opções">
+                  <MoreHorizontal size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Media Frame */}
+            <div className={`insta-media-frame ${content.format === "story" ? "is-story" : ""}`}>
+              <MediaPreview
+                content={content}
+                brand={clientName}
+                mode="detail"
+                slideIndex={slideIndex}
+                attachment={selectedAttachment}
+              />
+              {!selectedAttachment && content.format === "carrossel" && totalSlides > 1 && (
+                <>
+                  <div className="insta-carousel-badge">
+                    {slideIndex + 1}/{totalSlides}
+                  </div>
+                  {slideIndex > 0 && (
+                    <button
+                      type="button"
+                      className="insta-carousel-arrow insta-carousel-prev"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSlideIndex((prev) => Math.max(0, prev - 1));
+                      }}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                  )}
+                  {slideIndex < totalSlides - 1 && (
+                    <button
+                      type="button"
+                      className="insta-carousel-arrow insta-carousel-next"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSlideIndex((prev) => Math.min(totalSlides - 1, prev + 1));
+                      }}
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Action Bar */}
+            <div className="insta-action-bar">
+              <div className="insta-actions-left">
+                <button
+                  type="button"
+                  className={`insta-action-btn ${liked ? "is-liked" : ""}`}
+                  onClick={() => {
+                    setLiked((prev) => !prev);
+                    setLikeCount((prev) => (liked ? prev - 1 : prev + 1));
+                  }}
+                  aria-label={liked ? "Descurtir" : "Curtir"}
+                >
+                  <Heart
+                    size={24}
+                    fill={liked ? "#ed4956" : "none"}
+                    color={liked ? "#ed4956" : "#262626"}
+                    strokeWidth={liked ? 0 : 2}
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="insta-action-btn"
+                  onClick={() => {
+                    captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    setCommentOpen(true);
+                  }}
+                  aria-label="Comentar"
+                >
+                  <MessageCircle size={24} color="#262626" />
+                </button>
+                <button
+                  type="button"
+                  className="insta-action-btn"
+                  onClick={() => {
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(content.publishedUrl || window.location.href);
+                      setFeedback("Link da publicação copiado!");
+                      setTimeout(() => setFeedback(""), 3000);
+                    }
+                  }}
+                  aria-label="Compartilhar"
+                >
+                  <Send size={24} color="#262626" />
+                </button>
+              </div>
+
+              {!selectedAttachment && content.format === "carrossel" && totalSlides > 1 && (
+                <div className="insta-carousel-dots">
+                  {Array.from({ length: totalSlides }).map((_, idx) => (
+                    <span key={idx} className={`insta-dot ${idx === slideIndex ? "is-active" : ""}`} />
+                  ))}
+                </div>
+              )}
+
+              <div className="insta-actions-right">
+                <button
+                  type="button"
+                  className={`insta-action-btn ${saved ? "is-saved" : ""}`}
+                  onClick={() => setSaved((prev) => !prev)}
+                  aria-label={saved ? "Salvo" : "Salvar"}
+                >
+                  <Bookmark size={24} fill={saved ? "#262626" : "none"} color="#262626" />
+                </button>
+              </div>
+            </div>
+
+            {/* Likes */}
+            <div className="insta-likes-row">
+              <span className="insta-likes-count">
+                <strong>{likeCount.toLocaleString("pt-BR")} curtidas</strong>
+              </span>
+            </div>
+
+            {/* Caption */}
+            <div className="insta-caption-row">
+              <p className="insta-caption-content">
+                <strong className="insta-caption-author">{instagramHandle}</strong>{" "}
+                <span>{content.title}</span>
+              </p>
+              {content.caption && (
+                <p className="insta-caption-snippet">
+                  {content.caption.length > 140 ? `${content.caption.slice(0, 140)}...` : content.caption}
+                </p>
+              )}
+              <div className="insta-hashtags">
+                <span>#agencianurea</span> <span>#marketingdigital</span> <span>#{instagramHandle}</span>
+              </div>
+              <span className="insta-time-stamp">HÁ 2 HORAS · VER TRADUÇÃO</span>
+            </div>
           </div>
-          {!selectedAttachment && content.format === "carrossel" && (content.media?.length ?? content.slides?.length ?? 0) > 1 && <div className="content-detail-carousel"><button onClick={() => setSlideIndex(Math.max(0, slideIndex - 1))} disabled={slideIndex === 0} aria-label="Página anterior"><ChevronLeft size={20} /></button><span>{slideIndex + 1} / {content.media?.length ?? content.slides?.length}</span><button onClick={() => setSlideIndex(Math.min((content.media?.length ?? content.slides?.length ?? 1) - 1, slideIndex + 1))} disabled={slideIndex === (content.media?.length ?? content.slides?.length ?? 1) - 1} aria-label="Próxima página"><ChevronRight size={20} /></button></div>}
         </div>
         <div className="content-detail-columns">
           <div className="content-detail-main">

@@ -10,6 +10,8 @@
 
 ## P1 — produto
 
+- [x] Mockup fiel do Instagram no detalhe da publicação (avatar, @usuário, botão seguir, barra de ações interativa com curtir/salvar/comentar, contagem de curtidas e legenda formatada).
+- [x] Player de vídeo interativo para Reels/vídeo: execução real sob clique, controles nativos de reprodução e vídeo demonstrativo de fallback quando ainda não há arquivo enviado.
 - [x] Planejamento local por cliente/mês: upload imagem/PDF, substituição, remoção, versão, histórico e aprovação.
 - [ ] Recuperar versões anteriores e implementar lixeira/limpeza de blobs sem referência (posts, mídias, logos e planejamentos removidos/substituídos).
 - [ ] Levar os fluxos locais de comentário, ajuste e aprovação ao backend com identidade autenticada.
