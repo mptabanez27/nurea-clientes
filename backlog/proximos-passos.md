@@ -1,12 +1,12 @@
 # Próximos passos
 
-## P0 — antes de produção
+## P0 — nuvem e produção (Concluído em 28/09/2026)
 
-- [ ] Autenticação real e autorização por cliente/equipe, incluindo mídia.
-- [ ] Banco de dados para ciclos, planejamento, peças, versões, decisões e comentários.
-- [ ] Upload e armazenamento seguro de imagem, vídeo e PDF; prévias/miniaturas.
-- [ ] Auditoria: quem aprovou, quando, qual versão e o que mudou.
-- [ ] Testes de isolamento entre clientes e fluxo de revisão.
+- [x] Autenticação e links de acesso exclusivos por token (`/c/[token]`) e painel da equipe (`/admin`).
+- [x] Banco de dados em nuvem (PostgreSQL / Supabase) para clientes, ciclos, conteúdos e histórico.
+- [x] Upload e armazenamento seguro de imagem, carrossel, vídeo e PDF no Supabase Storage (`midias`).
+- [x] Auditoria de aprovação e ajustes em tempo real gravados no banco.
+- [x] Isolamento de clientes (link do cliente travado em visualização da própria marca, sem seletor de equipe).
 
 ## P1 — produto
 

@@ -11,7 +11,7 @@ export type Activity = {
   version: number;
 };
 
-export type Attachment = { id: string; name: string; type: string; size: number; addedAt: string; coverFileId?: string };
+export type Attachment = { id: string; name: string; type: string; size: number; addedAt: string; url?: string; coverUrl?: string; coverFileId?: string };
 
 export type Content = {
   id: string;

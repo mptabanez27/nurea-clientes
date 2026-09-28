@@ -26,6 +26,12 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
     setUrls({});
     setPosters({});
     Promise.all(items.map(async (item) => {
+      if (item.url) {
+        if (item.coverUrl) {
+          setPosters((previous) => ({ ...previous, [item.id]: item.coverUrl! }));
+        }
+        return [item.id, item.url] as const;
+      }
       const blob = await getLocalFile(item.id);
       if (!blob) return null;
       const url = URL.createObjectURL(blob);

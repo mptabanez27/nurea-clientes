@@ -17,24 +17,37 @@ export default function PlanDocument({ plan, monthKey, team, onChange }: { plan:
     let active = true;
     let objectUrl = "";
     setUrl(""); setError("");
+    if (plan.file?.url) {
+      setUrl(plan.file.url);
+      return;
+    }
     if (plan.file) getLocalFile(plan.file.id).then(blob => {
       if (!active) return;
       if (!blob) { setError("Arquivo indisponível neste navegador. Peça à equipe para enviá-lo novamente."); return; }
       objectUrl = URL.createObjectURL(blob); setUrl(objectUrl);
     }).catch(() => { if (active) setError("Não foi possível abrir o arquivo. Tente enviá-lo novamente."); });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [plan.file?.id]);
+  }, [plan.file?.id, plan.file?.url]);
 
   async function upload(file?: File) {
     if (!file || saving) return;
     if (!(file.type.startsWith("image/") || file.type === "application/pdf") || file.size > 20 * 1024 * 1024) { setError("Escolha uma imagem ou PDF de até 20 MB."); return; }
     setSaving(true); setError("");
     try {
+      let fileUrl: string | undefined;
+      try {
+        const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+        fileUrl = await uploadFileToStorage(file, `plans/${monthKey}-${Date.now()}-${file.name}`);
+      } catch (err) {
+        console.warn("Upload em nuvem falhou, tentando fallback local:", err);
+      }
       const id = crypto.randomUUID();
-      await saveLocalFile(id, file);
+      if (!fileUrl) {
+        await saveLocalFile(id, file);
+      }
       onChange(current => {
         const version = current.version + 1;
-        return { ...current, version, status: "rascunho", exampleRemoved: true, file: { id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp() }, activity: [{ id: crypto.randomUUID(), author: "Equipe Nurea", action: "Arquivo do planejamento atualizado", note: file.name, version, at: todayStamp() }, ...current.activity] };
+        return { ...current, version, status: "rascunho", exampleRemoved: true, file: { id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp(), url: fileUrl }, activity: [{ id: crypto.randomUUID(), author: "Equipe Nurea", action: "Arquivo do planejamento atualizado", note: file.name, version, at: todayStamp() }, ...current.activity] };
       });
     } catch { setError("Não foi possível salvar o arquivo. Tente novamente ou escolha um arquivo menor."); }
     finally { setSaving(false); }

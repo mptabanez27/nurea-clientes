@@ -14,6 +14,7 @@ import {
   FileText,
   Grid3X3,
   LayoutGrid,
+  Link2,
   List,
   Menu,
   MessageCircle,
@@ -53,12 +54,32 @@ function StatusBadge({ status }: { status: ContentStatus | Workspace["plan"]["st
   return <span className={`status-badge status-${status}`}><span className="status-dot" />{label}</span>;
 }
 
-export default function Portal() {
+export type PortalProps = {
+  initialClientId?: string;
+  initialRole?: Role;
+  fixedRole?: boolean;
+  fixedClient?: boolean;
+  clientToken?: string;
+  availableClients?: { id: string; name: string; access_token?: string }[];
+};
+
+export default function Portal({
+  initialClientId,
+  initialRole,
+  fixedRole = false,
+  fixedClient = false,
+  clientToken,
+  availableClients,
+}: PortalProps = {}) {
   const [workspaces, setWorkspaces] = useState<Record<string, Workspace>>(initialWorkspaces);
-  const [clientId, setClientId] = useState(defaultClientId);
+  const [clientId, setClientId] = useState(initialClientId ?? defaultClientId);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [role, setRole] = useState<Role>("cliente");
+  const [role, setRole] = useState<Role>(fixedRole ? "cliente" : (initialRole ?? "cliente"));
+  const [clientsList, setClientsList] = useState<{ id: string; name: string; access_token?: string }[]>(
+    availableClients ?? demoClients.map(c => ({ id: c.id, name: c.name }))
+  );
+  const [copiedLink, setCopiedLink] = useState(false);
   const [view, setView] = useState<View>("feed");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [feedMode, setFeedMode] = useState<FeedMode>("grid");
@@ -94,6 +115,27 @@ export default function Portal() {
     const [year, month] = key.split("-").map(Number);
     const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, month - 1, 1)));
     return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
+  function copyClientLink() {
+    const current = clientsList.find((c) => c.id === clientId);
+    const token = clientToken || (current as any)?.access_token;
+    if (!token) {
+      alert("Token de acesso exclusivo ainda não disponível para este cliente.");
+      return;
+    }
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://cliente.agencianurea.com.br";
+    const fullUrl = `${origin}/c/${token}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(fullUrl).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 3000);
+      }).catch(() => {
+        window.prompt("Copie o link exclusivo de acesso:", fullUrl);
+      });
+    } else {
+      window.prompt("Copie o link exclusivo de acesso:", fullUrl);
+    }
   }
 
   function switchMonth(nextKey: string, create = false) {
@@ -142,6 +184,33 @@ export default function Portal() {
   }
 
   useEffect(() => {
+    let active = true;
+    async function syncCloud() {
+      try {
+        const { loadWorkspaceData, getAllClients } = await import("@/lib/db");
+        if (!availableClients && !fixedClient) {
+          const all = await getAllClients();
+          if (active && all && all.length > 0) {
+            setClientsList(all.map((c) => ({ id: c.id, name: c.name, access_token: c.access_token })));
+          }
+        }
+        const cloudData = await loadWorkspaceData(clientId, activeMonthKey);
+        if (active && cloudData) {
+          setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
+        }
+      } catch (err) {
+        console.warn("Sync com Supabase falhou, usando dados locais:", err);
+      }
+    }
+    syncCloud();
+    return () => { active = false; };
+  }, [clientId, activeMonthKey, availableClients, fixedClient]);
+
+  useEffect(() => {
+    if (fixedRole) {
+      setHydrated(true);
+      return;
+    }
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
@@ -155,21 +224,25 @@ export default function Portal() {
               restored[client.id] = { ...candidate, months, contents: ensurePostNumbers(candidate.contents), clientName: client.name };
             }
           }
-          setWorkspaces(restored);
+          setWorkspaces((prev) => ({ ...restored, ...prev }));
         }
-        if (parsed?.clientId && demoClients.some((client) => client.id === parsed.clientId)) setClientId(parsed.clientId);
-        if (parsed?.role === "equipe" || parsed?.role === "cliente") setRole(parsed.role);
+        if (!initialClientId && parsed?.clientId && (demoClients.some((client) => client.id === parsed.clientId) || clientsList.some(c => c.id === parsed.clientId))) {
+          setClientId(parsed.clientId);
+        }
+        if (!initialRole && (parsed?.role === "equipe" || parsed?.role === "cliente")) {
+          setRole(parsed.role);
+        }
       }
     } catch {
       // Corrupt or unavailable local demo state is safely ignored.
     }
     setHydrated(true);
-  }, []);
+  }, [fixedRole, initialClientId, initialRole]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || fixedRole) return;
     try { localStorage.setItem(storageKey, JSON.stringify({ clientId, role, workspaces })); } catch { /* demo stays usable without persistence */ }
-  }, [clientId, role, workspaces, hydrated]);
+  }, [clientId, role, workspaces, hydrated, fixedRole]);
 
   useEffect(() => {
     if (!newOpen) { setNewMediaFiles([]); setNewMediaError(""); }
@@ -180,6 +253,10 @@ export default function Portal() {
     setLogoPreview(null);
     setLogoError("");
     if (!id) return;
+    if (id.startsWith("http://") || id.startsWith("https://")) {
+      setLogoPreview({ id, url: id });
+      return;
+    }
     let active = true;
     let url: string | null = null;
     getLocalFile(id).then((blob) => {
@@ -191,7 +268,7 @@ export default function Portal() {
   }, [clientId, workspace.logoFileId]);
 
   function changeClient(nextId: string) {
-    if (!demoClients.some((client) => client.id === nextId)) return;
+    if (!clientsList.some((client) => client.id === nextId) && !demoClients.some((c) => c.id === nextId)) return;
     setClientId(nextId);
     setSelectedId(null);
     setClientMenuOpen(false);
@@ -213,12 +290,23 @@ export default function Portal() {
     if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { setLogoError("Escolha uma imagem de até 5 MB."); return; }
     setLogoError("");
     try {
-      const id = uid();
-      await saveLocalFile(id, file);
+      let logoUrl: string | undefined;
+      try {
+        const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+        logoUrl = await uploadFileToStorage(file, `logos/${clientId}-${Date.now()}-${file.name}`);
+      } catch {}
+      const id = logoUrl || uid();
+      if (!logoUrl) {
+        await saveLocalFile(id, file);
+      }
       setWorkspace((prev) => ({ ...prev, logoFileId: id, logoScale: 100, logoOffsetX: 0, logoOffsetY: 0, logoBorder: false }));
       setLogoDraft({ scale: 100, x: 0, y: 0, border: false });
       setLogoEditorOpen(true);
-    } catch { setLogoError("Não foi possível salvar a logo neste navegador."); }
+      if (logoUrl) {
+        const { updateClientLogoSettings } = await import("@/lib/db");
+        await updateClientLogoSettings(clientId, { logo_url: logoUrl, logo_scale: 100, logo_offset_x: 0, logo_offset_y: 0, logo_border: false });
+      }
+    } catch { setLogoError("Não foi possível salvar a logo."); }
   }
 
   const feedContents = workspace.contents.filter((content) => content.format !== "story");
@@ -253,13 +341,26 @@ export default function Portal() {
   }
 
   function updateContent(id: string, transform: (content: Content) => Content) {
-    setWorkspace((prev) => ({ ...prev, contents: prev.contents.map((content) => {
-      if (content.id !== id) return content;
-      const updated = transform(content);
-      if (updated.format === "story" || updated.postNumber) return updated;
-      const nextNumber = Math.max(prev.nextPostNumber ?? 1, prev.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1);
-      return { ...updated, postNumber: nextNumber };
-    }) }));
+    setWorkspace((prev) => {
+      let updatedItem: Content | undefined;
+      const nextContents = prev.contents.map((content) => {
+        if (content.id !== id) return content;
+        const updated = transform(content);
+        if (updated.format === "story" || updated.postNumber) {
+          updatedItem = updated;
+          return updated;
+        }
+        const nextNumber = Math.max(prev.nextPostNumber ?? 1, prev.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1);
+        updatedItem = { ...updated, postNumber: nextNumber };
+        return updatedItem;
+      });
+      if (updatedItem) {
+        import("@/lib/db").then(({ saveContentRecord }) => {
+          saveContentRecord(clientId, activeMonthKey, updatedItem!);
+        }).catch(console.error);
+      }
+      return { ...prev, contents: nextContents };
+    });
   }
 
   function actionOnContent(id: string, status: ContentStatus, action: string, note?: string) {
@@ -268,6 +369,10 @@ export default function Portal() {
       status,
       activity: [{ id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: content.version }, ...content.activity],
     }));
+    import("@/lib/db").then(({ saveContentRecord, addActivityRecord }) => {
+      saveContentRecord(clientId, activeMonthKey, { id, status } as any).catch(console.error);
+      addActivityRecord(id, role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, selected?.version || 1).catch(console.error);
+    }).catch(console.error);
   }
 
   async function createContent(event: React.FormEvent<HTMLFormElement>) {
@@ -277,24 +382,42 @@ export default function Portal() {
     if (error) { setNewMediaError(error); return; }
     setNewSaving(true);
     setNewMediaError("");
-    const savedIds: string[] = [];
+    const savedMedia: import("@/lib/demo").Attachment[] = [];
     try {
       for (const file of newMediaFiles) {
+        let fileUrl: string | undefined;
+        try {
+          const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+          fileUrl = await uploadFileToStorage(file, `posts/${clientId}-${Date.now()}-${file.name}`);
+        } catch {}
         const id = uid();
-        await saveLocalFile(id, file);
-        savedIds.push(id);
+        if (!fileUrl) {
+          await saveLocalFile(id, file);
+        }
+        savedMedia.push({ id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp(), url: fileUrl });
       }
     } catch {
-      for (const id of savedIds) await deleteLocalFile(id).catch(() => {});
-      setNewMediaError("Não foi possível salvar a mídia neste navegador. Tente um arquivo menor.");
+      setNewMediaError("Não foi possível salvar a mídia.");
       setNewSaving(false);
       return;
     }
+    const nextPostNum = newFormat !== "story" ? Math.max(workspace.nextPostNumber ?? 1, workspace.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1) : undefined;
+    const newId = uid();
     const content: Content = {
-      id: uid(), ...(newFormat !== "story" ? { postNumber: Math.max(workspace.nextPostNumber ?? 1, workspace.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1) } : {}), title: newTitle.trim(), category: "Novo conteúdo", format: newFormat,
-      date: newDate, status: "producao", caption: newCaption.trim(), cta: "", cover: Math.floor(Math.random() * 9) + 1,
-      version: 1, activity: [],
-      media: newMediaFiles.map((file, index) => ({ id: savedIds[index], name: file.name, type: file.type, size: file.size, addedAt: todayStamp() })),
+      id: newId,
+      ...(nextPostNum ? { postNumber: nextPostNum } : {}),
+      title: newTitle.trim(),
+      category: "Novo conteúdo",
+      format: newFormat,
+      date: newDate,
+      status: "producao",
+      caption: newCaption.trim(),
+      cta: "",
+      cover: Math.floor(Math.random() * 9) + 1,
+      version: 1,
+      activity: [],
+      media: savedMedia,
+      attachments: savedMedia,
       ...(newFormat === "carrossel" ? { slides: [newTitle.trim()] } : {}),
     };
     setWorkspace((prev) => ({ ...prev, contents: [...prev.contents, content], nextPostNumber: Math.max(prev.nextPostNumber ?? 1, (content.postNumber ?? 0) + 1) }));
@@ -305,10 +428,23 @@ export default function Portal() {
     setNewSaving(false);
     setView(newFormat === "story" ? "stories" : "feed");
     requestAnimationFrame(() => openDetail(content.id));
+
+    import("@/lib/db").then(({ saveContentRecord }) => {
+      saveContentRecord(clientId, activeMonthKey, content);
+    }).catch(console.error);
   }
 
   function updatePlan(status: Workspace["plan"]["status"], action: string, note?: string) {
-    setWorkspace((prev) => ({ ...prev, plan: { ...prev.plan, status, activity: [{ id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: prev.plan.version }, ...prev.plan.activity] } }));
+    setWorkspace((prev) => {
+      const nextVersion = prev.plan.status !== status ? prev.plan.version + 1 : prev.plan.version;
+      const activity: import("@/lib/demo").Activity = { id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: nextVersion };
+      return { ...prev, plan: { ...prev.plan, status, version: nextVersion, activity: [activity, ...prev.plan.activity] } };
+    });
+    setPlanAdjustOpen(false);
+    setPlanAdjustText("");
+    import("@/lib/db").then(({ updatePlanStatusRecord }) => {
+      updatePlanStatusRecord(clientId, activeMonthKey, status, action, role === "cliente" ? "Cliente" : "Equipe Nurea", note);
+    }).catch(console.error);
   }
 
   function restoreDemo() {
@@ -334,14 +470,31 @@ export default function Portal() {
           <button className="icon-button mobile-only" onClick={() => setMenuOpen(false)} aria-label="Fechar menu"><X size={20} /></button>
         </div>
         <div className="client-switcher">
-          {role === "equipe" ? <>
+          {!fixedClient && role === "equipe" ? <>
             <button className="sidebar-client client-switch-button" onClick={() => setClientMenuOpen((open) => !open)} aria-expanded={clientMenuOpen} aria-controls="client-options" aria-label={`Trocar cliente. Atual: ${workspace.clientName}`}>
               <span>ESPAÇO DO CLIENTE</span><strong>{workspace.clientName}</strong><small>Trocar cliente <ChevronsUpDown size={14} /></small>
             </button>
-            {clientMenuOpen && <div className="client-options" id="client-options" aria-label="Clientes da demonstração">
-              {demoClients.map((client) => <button key={client.id} className={client.id === clientId ? "selected" : ""} onClick={() => changeClient(client.id)} aria-current={client.id === clientId ? "true" : undefined}><span>{client.name}</span>{client.id === clientId && <Check size={16} />}</button>)}
+            {clientMenuOpen && <div className="client-options" id="client-options" aria-label="Clientes">
+              {clientsList.map((client) => <button key={client.id} className={client.id === clientId ? "selected" : ""} onClick={() => changeClient(client.id)} aria-current={client.id === clientId ? "true" : undefined}><span>{client.name}</span>{client.id === clientId && <Check size={16} />}</button>)}
+              <button
+                type="button"
+                className="outline-button"
+                style={{ margin: "8px 12px", width: "calc(100% - 24px)", fontSize: "11px", minHeight: "36px" }}
+                onClick={async () => {
+                  const name = window.prompt("Nome do novo cliente:");
+                  if (!name || !name.trim()) return;
+                  const { createClient } = await import("@/lib/db");
+                  const created = await createClient(name.trim());
+                  if (created) {
+                    setClientsList((prev) => [...prev, created]);
+                    changeClient(created.id);
+                  }
+                }}
+              >
+                <Plus size={14} /> Novo cliente
+              </button>
             </div>}
-          </> : <div className="sidebar-client"><span>ESPAÇO DO CLIENTE</span><strong>{workspace.clientName}</strong><small>Ambiente de demonstração</small></div>}
+          </> : <div className="sidebar-client"><span>ESPAÇO DO CLIENTE</span><strong>{workspace.clientName}</strong><small>Portal exclusivo de aprovação</small></div>}
         </div>
         <nav className="side-nav">
           <span className="side-nav-label">NAVEGAÇÃO</span>
@@ -352,7 +505,7 @@ export default function Portal() {
         <div className="sidebar-bottom">
           <div className="help-card"><span className="help-mark">?</span><div><strong>Precisa de ajuda?</strong><p>Fale com a equipe Nurea pelo WhatsApp.</p></div></div>
           {role === "equipe" && <button className="restore-button" onClick={restoreDemo}><RotateCcw size={15} /> Restaurar demonstração</button>}
-          <p>PORTAL DE CONTEÚDOS · VERSÃO LOCAL</p>
+          <p>PORTAL DE CONTEÚDOS · NUREA</p>
         </div>
       </aside>
       {menuOpen && <button className="mobile-scrim" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
@@ -362,8 +515,28 @@ export default function Portal() {
           <button className="icon-button mobile-only" onClick={() => setMenuOpen(true)} aria-label="Abrir menu"><Menu size={22} /></button>
           <div className="topbar-path"><span className="breadcrumb-context">Nurea <i>/</i> {workspace.clientName} <i>/</i></span><strong>{view === "feed" ? "Conteúdos" : view === "stories" ? "Stories" : "Planejamento"}</strong></div>
           <div className="topbar-actions">
-            <span className="demo-pill"><span className="demo-long">DEMONSTRAÇÃO LOCAL</span><span className="demo-short">DEMO</span></span>
-            <label className="role-switch"><span>Visualizar como</span><select value={role} onChange={(event) => { setRole(event.target.value as Role); setSelectedId(null); setLogoEditorOpen(false); }} aria-label="Visualizar como"><option value="cliente">Cliente</option><option value="equipe">Equipe Nurea</option></select></label>
+            {role === "equipe" && (
+              <button
+                type="button"
+                className="outline-button share-link-button"
+                onClick={copyClientLink}
+                title="Copiar link exclusivo deste cliente para enviar no WhatsApp"
+              >
+                <Link2 size={16} />
+                <span>{copiedLink ? "✓ Link copiado!" : "Copiar link do cliente"}</span>
+              </button>
+            )}
+            {!fixedRole ? (
+              <label className="role-switch">
+                <span>Visualizar como</span>
+                <select value={role} onChange={(event) => { setRole(event.target.value as Role); setSelectedId(null); setLogoEditorOpen(false); }} aria-label="Visualizar como">
+                  <option value="cliente">Cliente</option>
+                  <option value="equipe">Equipe Nurea</option>
+                </select>
+              </label>
+            ) : (
+              <span className="demo-pill" style={{ background: "#edf4ed", borderColor: "#a0cca7", color: "#2d5738" }}>PORTAL DO CLIENTE</span>
+            )}
           </div>
         </header>
 

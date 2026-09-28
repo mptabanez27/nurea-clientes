@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, MessageCircle, Paperclip, Play, Plus, Send, X } from "lucide-react";
 import MediaPreview from "./MediaPreview";
-import { Content, ContentFormat, ContentStatus, formatActivityDate, formatLabel, statusLabel, todayStamp } from "@/lib/demo";
+import { Attachment, Content, ContentFormat, ContentStatus, formatActivityDate, formatLabel, statusLabel, todayStamp } from "@/lib/demo";
 import { deleteLocalFile, getLocalFile, saveLocalFile } from "@/lib/localFiles";
 import { mediaAccept, mediaIsCompatible, validateMediaFiles } from "@/lib/media";
 
@@ -96,6 +96,9 @@ export default function ContentDetail({ content, clientName, role, position, tot
     let active = true;
     const urls: string[] = [];
     Promise.all((content.attachments ?? []).map(async (item) => {
+      if (item.url) {
+        return [item.id, item.url] as const;
+      }
       const blob = await getLocalFile(item.id);
       if (!blob) return null;
       const url = URL.createObjectURL(blob);
@@ -136,21 +139,27 @@ export default function ContentDetail({ content, clientName, role, position, tot
     if (!changed) { setEditOpen(false); return; }
     setEditSaving(true);
     setEditMediaError("");
-    const savedIds: string[] = [];
+    const savedItems: Attachment[] = [];
     try {
       for (const file of editMediaFiles) {
+        let fileUrl: string | undefined;
+        try {
+          const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+          fileUrl = await uploadFileToStorage(file, `posts/${content.id}-${Date.now()}-${file.name}`);
+        } catch {}
         const id = uid();
-        await saveLocalFile(id, file);
-        savedIds.push(id);
+        if (!fileUrl) {
+          await saveLocalFile(id, file);
+        }
+        savedItems.push({ id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp(), url: fileUrl });
       }
     } catch {
-      for (const id of savedIds) await deleteLocalFile(id).catch(() => {});
-      setEditMediaError("Não foi possível salvar a mídia neste navegador. Tente um arquivo menor.");
+      setEditMediaError("Não foi possível salvar a mídia.");
       setEditSaving(false);
       return;
     }
     onUpdate((current) => {
-      const media = editMediaFiles.length ? editMediaFiles.map((file, index) => ({ id: savedIds[index], name: file.name, type: file.type, size: file.size, addedAt: todayStamp() })) : editExistingMedia;
+      const media = editMediaFiles.length ? savedItems : editExistingMedia;
       return {
         ...(materialChanged ? revision(current, "Conteúdo alterado. Nova aprovação necessária.") : { ...current, activity: [{ id: uid(), author: "Equipe Nurea", action: "Dados de publicação atualizados", at: todayStamp(), version: current.version }, ...current.activity] }),
         category: editCategory.trim(), publishedUrl: editPublishedUrl.trim() || undefined, sharedToStory: editShared,
@@ -168,15 +177,22 @@ export default function ContentDetail({ content, clientName, role, position, tot
     if (!files.length) return;
     setFileError("");
     for (const file of files) {
-      if (file.size > 100 * 1024 * 1024) { setFileError("Cada arquivo deve ter no máximo 100 MB nesta demonstração."); continue; }
+      if (file.size > 100 * 1024 * 1024) { setFileError("Cada arquivo deve ter no máximo 100 MB."); continue; }
+      let fileUrl: string | undefined;
+      try {
+        const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+        fileUrl = await uploadFileToStorage(file, `attachments/${content.id}-${Date.now()}-${file.name}`);
+      } catch {}
       const id = uid();
       try {
-        await saveLocalFile(id, file);
+        if (!fileUrl) {
+          await saveLocalFile(id, file);
+        }
         onUpdate((current) => ({
           ...revision(current, `Anexo adicionado: ${file.name}`),
-          attachments: [...(current.attachments ?? []), { id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp() }],
+          attachments: [...(current.attachments ?? []), { id, name: file.name, type: file.type, size: file.size, addedAt: todayStamp(), url: fileUrl }],
         }));
-      } catch { setFileError("Não foi possível salvar o arquivo neste navegador."); }
+      } catch { setFileError("Não foi possível salvar o arquivo."); }
     }
   }
   async function removeAttachment(id: string) {
@@ -197,18 +213,25 @@ export default function ContentDetail({ content, clientName, role, position, tot
     }
     setCoverSaving(true);
     setFileError("");
+    let coverUrl: string | undefined;
+    try {
+      const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+      coverUrl = await uploadFileToStorage(file, `covers/${content.id}-${Date.now()}-${file.name}`);
+    } catch {}
     const id = uid();
     try {
-      await saveLocalFile(id, file);
+      if (!coverUrl) {
+        await saveLocalFile(id, file);
+      }
       onUpdate((current) => ({
         ...revision(current, `Capa do vídeo alterada: ${video.name}`),
-        attachments: (current.attachments ?? []).map((item) => item.id === video.id ? { ...item, coverFileId: id } : item),
-        media: current.media?.map(item => item.id === video.id ? { ...item, coverFileId: id } : item),
+        attachments: (current.attachments ?? []).map((item) => item.id === video.id ? { ...item, coverFileId: id, coverUrl } : item),
+        media: current.media?.map(item => item.id === video.id ? { ...item, coverFileId: id, coverUrl } : item),
       }));
       if (video.coverFileId) await deleteLocalFile(video.coverFileId).catch(() => {});
     } catch {
       await deleteLocalFile(id).catch(() => {});
-      setFileError("Não foi possível salvar a capa neste navegador.");
+      setFileError("Não foi possível salvar a capa.");
     } finally { setCoverSaving(false); }
   }
   function requestAdjustment(event: FormEvent) {

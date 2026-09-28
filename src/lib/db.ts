@@ -1,0 +1,345 @@
+import { supabase, getSupabaseAdmin } from "./supabase";
+import {
+  Content,
+  ContentFormat,
+  ContentStatus,
+  MonthCycle,
+  PlanStatus,
+  Workspace,
+  ensurePostNumbers,
+  todayStamp,
+} from "./demo";
+
+export type ClientRecord = {
+  id: string;
+  name: string;
+  access_token: string;
+  logo_url: string | null;
+  logo_scale: number;
+  logo_offset_x: number;
+  logo_offset_y: number;
+  logo_border: boolean;
+  created_at: string;
+};
+
+// Obter cliente pelo token exclusivo (usado no link do cliente /c/[token])
+export async function getClientByToken(token: string): Promise<ClientRecord | null> {
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("access_token", token)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as ClientRecord;
+}
+
+// Listar todos os clientes (para painel admin)
+export async function getAllClients(): Promise<ClientRecord[]> {
+  const { data, error } = await supabase
+    .from("clients")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) {
+    console.error("Erro ao listar clientes:", error);
+    return [];
+  }
+  return (data || []) as ClientRecord[];
+}
+
+// Criar um novo cliente no banco
+export async function createClient(name: string): Promise<ClientRecord | null> {
+  const slug = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  const id = `${slug}-${Date.now().toString().slice(-4)}`;
+  const admin = getSupabaseAdmin();
+
+  const { data, error } = await admin
+    .from("clients")
+    .insert({
+      id,
+      name,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Erro ao criar cliente:", error);
+    return null;
+  }
+  return data as ClientRecord;
+}
+
+// Atualizar logo e enquadramento do cliente
+export async function updateClientLogoSettings(
+  clientId: string,
+  updates: {
+    logo_url?: string;
+    logo_scale?: number;
+    logo_offset_x?: number;
+    logo_offset_y?: number;
+    logo_border?: boolean;
+  }
+) {
+  const admin = getSupabaseAdmin();
+  const { error } = await admin
+    .from("clients")
+    .update(updates)
+    .eq("id", clientId);
+
+  if (error) {
+    console.error("Erro ao atualizar logo do cliente:", error);
+    throw error;
+  }
+}
+
+// Carregar o workspace completo de um cliente (ciclos, plano, posts)
+export async function loadWorkspaceData(
+  clientId: string,
+  targetMonthKey = "2026-09"
+): Promise<Workspace | null> {
+  // 1. Buscar cliente
+  const { data: client, error: clientErr } = await supabase
+    .from("clients")
+    .select("*")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (clientErr || !client) return null;
+
+  // 2. Buscar ciclos mensais
+  const { data: cycles } = await supabase
+    .from("month_cycles")
+    .select("*")
+    .eq("client_id", clientId);
+
+  const monthsMap: Record<string, MonthCycle> = {};
+  if (cycles) {
+    for (const c of cycles) {
+      monthsMap[c.month_key] = {
+        plan: {
+          status: c.plan_status as PlanStatus,
+          version: c.plan_version,
+          file: c.plan_file_url
+            ? {
+                id: c.id,
+                name: c.plan_file_name || "Planejamento editorial",
+                type: "application/pdf",
+                size: 0,
+                addedAt: c.created_at,
+                url: c.plan_file_url,
+              }
+            : undefined,
+          activity: [],
+        },
+        contents: [],
+        nextPostNumber: c.next_post_number || 1,
+      };
+    }
+  }
+
+  // 3. Buscar posts/stories do mês em foco
+  const { data: contentsData } = await supabase
+    .from("contents")
+    .select(`
+      *,
+      activities:activities(*)
+    `)
+    .eq("client_id", clientId)
+    .eq("month_key", targetMonthKey)
+    .order("post_number", { ascending: true, nullsFirst: false });
+
+  const contents: Content[] = (contentsData || []).map((row) => ({
+    id: row.id,
+    postNumber: row.post_number ?? undefined,
+    title: row.title,
+    category: row.category,
+    format: row.format as ContentFormat,
+    date: row.date,
+    status: row.status as ContentStatus,
+    caption: row.caption || "",
+    cta: row.cta || "",
+    cover: 0,
+    version: row.version || 1,
+    publishedUrl: row.published_url || undefined,
+    sharedToStory: row.shared_to_story || false,
+    media: (row.media_urls || []) as any[],
+    attachments: (row.media_urls || []) as any[],
+    activity: (row.activities || []).map((a: any) => ({
+      id: a.id,
+      author: a.author,
+      action: a.action,
+      note: a.note || undefined,
+      at: a.created_at,
+      version: a.version || 1,
+    })),
+  }));
+
+  const activeCycle = monthsMap[targetMonthKey] || {
+    plan: {
+      status: "rascunho" as PlanStatus,
+      version: 1,
+      activity: [],
+    },
+    contents: [],
+    nextPostNumber: 1,
+  };
+
+  const [year, month] = targetMonthKey.split("-").map(Number);
+  const monthLabel = new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+
+  return {
+    clientName: client.name,
+    month: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+    monthKey: targetMonthKey,
+    months: monthsMap,
+    logoFileId: client.logo_url || undefined,
+    logoScale: client.logo_scale ?? 100,
+    logoOffsetX: client.logo_offset_x ?? 0,
+    logoOffsetY: client.logo_offset_y ?? 0,
+    logoBorder: client.logo_border ?? false,
+    plan: activeCycle.plan,
+    contents: ensurePostNumbers(contents),
+    nextPostNumber: activeCycle.nextPostNumber,
+  };
+}
+
+// Salvar ou atualizar post
+export async function saveContentRecord(
+  clientId: string,
+  monthKey: string,
+  content: Partial<Content> & { title: string; format: ContentFormat; date: string }
+): Promise<string> {
+  const admin = getSupabaseAdmin();
+
+  if (content.id && !content.id.startsWith("new-") && !content.id.startsWith("post-")) {
+    // Atualizar existente
+    const { error } = await admin
+      .from("contents")
+      .update({
+        title: content.title,
+        category: content.category,
+        format: content.format,
+        date: content.date,
+        status: content.status,
+        caption: content.caption,
+        cta: content.cta,
+        version: content.version,
+        published_url: content.publishedUrl,
+        shared_to_story: content.sharedToStory,
+        media_urls: content.media || [],
+      })
+      .eq("id", content.id);
+
+    if (error) throw error;
+    return content.id;
+  } else {
+    // Inserir novo
+    const { data, error } = await admin
+      .from("contents")
+      .insert({
+        client_id: clientId,
+        month_key: monthKey,
+        post_number: content.postNumber,
+        title: content.title,
+        category: content.category || "Geral",
+        format: content.format,
+        date: content.date,
+        status: content.status || "producao",
+        caption: content.caption || "",
+        cta: content.cta || "",
+        version: content.version || 1,
+        published_url: content.publishedUrl,
+        shared_to_story: content.sharedToStory || false,
+        media_urls: content.media || [],
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return data.id;
+  }
+}
+
+// Registrar atividade (aprovação, ajuste, comentário)
+export async function addActivityRecord(
+  contentId: string,
+  author: string,
+  action: string,
+  note?: string,
+  version = 1
+) {
+  const admin = getSupabaseAdmin();
+  const { error } = await admin.from("activities").insert({
+    content_id: contentId,
+    author,
+    action,
+    note,
+    version,
+  });
+
+  if (error) console.error("Erro ao registrar atividade:", error);
+}
+
+// Deletar post
+export async function deleteContentRecord(contentId: string) {
+  const admin = getSupabaseAdmin();
+  const { error } = await admin.from("contents").delete().eq("id", contentId);
+  if (error) throw error;
+}
+
+// Atualizar status do planejamento do mês
+export async function updatePlanStatusRecord(
+  clientId: string,
+  monthKey: string,
+  status: PlanStatus,
+  action: string,
+  author: string,
+  note?: string,
+  fileUrl?: string,
+  fileName?: string
+) {
+  const admin = getSupabaseAdmin();
+  const updates: Record<string, any> = {
+    plan_status: status,
+  };
+  if (fileUrl) {
+    updates.plan_file_url = fileUrl;
+    updates.plan_file_name = fileName || "Planejamento editorial";
+  }
+
+  const { data: cycle } = await admin
+    .from("month_cycles")
+    .upsert(
+      {
+        client_id: clientId,
+        month_key: monthKey,
+        month_name: monthKey,
+        ...updates,
+      },
+      { onConflict: "client_id,month_key" }
+    )
+    .select("id, plan_version")
+    .single();
+
+  if (cycle) {
+    await admin.from("activities").insert({
+      month_cycle_id: cycle.id,
+      author,
+      action,
+      note,
+      version: cycle.plan_version || 1,
+    });
+  }
+}
+
