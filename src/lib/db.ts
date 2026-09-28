@@ -239,31 +239,52 @@ export async function loadWorkspaceData(
     .eq("month_key", targetMonthKey)
     .order("post_number", { ascending: true, nullsFirst: false });
 
-  const contents: Content[] = (contentsData || []).map((row) => ({
-    id: row.id,
-    postNumber: row.post_number ?? undefined,
-    title: row.title,
-    category: row.category,
-    format: row.format as ContentFormat,
-    date: row.date,
-    status: row.status as ContentStatus,
-    caption: row.caption || "",
-    cta: row.cta || "",
-    cover: 0,
-    version: row.version || 1,
-    publishedUrl: row.published_url || undefined,
-    sharedToStory: row.shared_to_story || false,
-    media: (row.media_urls || []) as any[],
-    attachments: (row.media_urls || []) as any[],
-    activity: (row.activities || []).map((a: any) => ({
-      id: a.id,
-      author: a.author,
-      action: a.action,
-      note: a.note || undefined,
-      at: a.created_at,
-      version: a.version || 1,
-    })),
-  }));
+  const contents: Content[] = (contentsData || []).map((row) => {
+    const rawMedia = (row.media_urls || []) as any[];
+    const videoItem = rawMedia.find((m: any) => m.type?.startsWith("video/")) || rawMedia[0];
+    const coverScale = videoItem?.coverScale ?? (rawMedia.find((m: any) => m.coverScale !== undefined)?.coverScale);
+    const coverOffsetX = videoItem?.coverOffsetX ?? (rawMedia.find((m: any) => m.coverOffsetX !== undefined)?.coverOffsetX);
+    const coverOffsetY = videoItem?.coverOffsetY ?? (rawMedia.find((m: any) => m.coverOffsetY !== undefined)?.coverOffsetY);
+    const coverUrl = videoItem?.coverUrl ?? (rawMedia.find((m: any) => m.coverUrl)?.coverUrl);
+    const coverFileId = videoItem?.coverFileId ?? (rawMedia.find((m: any) => m.coverFileId)?.coverFileId);
+
+    const primaryMedia = row.format === "reels"
+      ? (rawMedia.filter((m: any) => m.type?.startsWith("video/")).length > 0 ? rawMedia.filter((m: any) => m.type?.startsWith("video/")) : rawMedia)
+      : row.format === "carrossel"
+      ? (rawMedia.filter((m: any) => !m.name?.startsWith("Capa · ") && m.type?.startsWith("image/")).length > 0 ? rawMedia.filter((m: any) => !m.name?.startsWith("Capa · ") && m.type?.startsWith("image/")) : rawMedia)
+      : (rawMedia.filter((m: any) => !m.name?.startsWith("Capa · ")).length > 0 ? rawMedia.filter((m: any) => !m.name?.startsWith("Capa · ")) : rawMedia);
+
+    return {
+      id: row.id,
+      postNumber: row.post_number ?? undefined,
+      title: row.title,
+      category: row.category,
+      format: row.format as ContentFormat,
+      date: row.date,
+      status: row.status as ContentStatus,
+      caption: row.caption || "",
+      cta: row.cta || "",
+      cover: 0,
+      version: row.version || 1,
+      publishedUrl: row.published_url || undefined,
+      sharedToStory: row.shared_to_story || false,
+      coverScale,
+      coverOffsetX,
+      coverOffsetY,
+      coverUrl,
+      coverFileId,
+      media: primaryMedia,
+      attachments: rawMedia,
+      activity: (row.activities || []).map((a: any) => ({
+        id: a.id,
+        author: a.author,
+        action: a.action,
+        note: a.note || undefined,
+        at: a.created_at,
+        version: a.version || 1,
+      })),
+    };
+  });
 
   const activeCycle = monthsMap[targetMonthKey] || {
     plan: {
@@ -324,7 +345,36 @@ export async function saveContentRecord(
   if (content.version !== undefined) record.version = content.version;
   if (content.publishedUrl !== undefined) record.published_url = content.publishedUrl;
   if (content.sharedToStory !== undefined) record.shared_to_story = content.sharedToStory;
-  if (content.media !== undefined) record.media_urls = content.media;
+  if (content.media !== undefined || content.attachments !== undefined) {
+    const attachmentsList = content.attachments ?? [];
+    const mediaList = content.media ?? [];
+    const mergedMap = new Map<string, any>();
+    for (const item of mediaList) {
+      if (item && item.id) mergedMap.set(item.id, item);
+    }
+    for (const item of attachmentsList) {
+      if (item && item.id) {
+        const existing = mergedMap.get(item.id);
+        mergedMap.set(item.id, existing ? { ...existing, ...item } : item);
+      }
+    }
+    // Also propagate content-level cover properties to the video or primary media item
+    if (content.coverScale !== undefined || content.coverOffsetX !== undefined || content.coverOffsetY !== undefined) {
+      for (const [id, item] of mergedMap.entries()) {
+        if (item.type?.startsWith("video/") || item.id === content.coverFileId) {
+          mergedMap.set(id, {
+            ...item,
+            coverScale: content.coverScale ?? item.coverScale,
+            coverOffsetX: content.coverOffsetX ?? item.coverOffsetX,
+            coverOffsetY: content.coverOffsetY ?? item.coverOffsetY,
+            coverUrl: content.coverUrl ?? item.coverUrl,
+            coverFileId: content.coverFileId ?? item.coverFileId,
+          });
+        }
+      }
+    }
+    record.media_urls = Array.from(mergedMap.values());
+  }
   if (content.postNumber !== undefined) record.post_number = content.postNumber;
 
   const { data, error } = await admin

@@ -11,7 +11,19 @@ export type Activity = {
   version: number;
 };
 
-export type Attachment = { id: string; name: string; type: string; size: number; addedAt: string; url?: string; coverUrl?: string; coverFileId?: string };
+export type Attachment = {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  addedAt: string;
+  url?: string;
+  coverUrl?: string;
+  coverFileId?: string;
+  coverScale?: number;
+  coverOffsetX?: number;
+  coverOffsetY?: number;
+};
 
 export type Content = {
   id: string;
@@ -29,6 +41,11 @@ export type Content = {
   mediaUrl?: string;
   publishedUrl?: string;
   sharedToStory?: boolean;
+  coverScale?: number;
+  coverOffsetX?: number;
+  coverOffsetY?: number;
+  coverUrl?: string;
+  coverFileId?: string;
   media?: Attachment[];
   attachments?: Attachment[];
   activity: Activity[];

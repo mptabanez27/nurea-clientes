@@ -22,11 +22,13 @@ export function InteractiveVideoPlayer({
   poster,
   isDemo = false,
   title,
+  coverStyle,
 }: {
   src: string;
   poster?: string;
   isDemo?: boolean;
   title?: string;
+  coverStyle?: React.CSSProperties;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -97,6 +99,7 @@ export function InteractiveVideoPlayer({
             src={poster}
             alt={title ? `Capa de: ${title}` : "Capa do vídeo"}
             className="video-custom-cover-img"
+            style={coverStyle}
           />
         </div>
       )}
@@ -191,7 +194,18 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
   const item = items[Math.min(slideIndex, Math.max(0, items.length - 1))];
   const url = item ? urls[item.id] || item.url : undefined;
   const isVideo = item ? item.type.startsWith("video/") : content.format === "reels";
-  const poster = item ? posters[item.id] || item.coverUrl : undefined;
+  const poster = item ? posters[item.id] || item.coverUrl || content.coverUrl : content.coverUrl;
+
+  const scale = item?.coverScale ?? content.coverScale ?? 100;
+  const offsetX = item?.coverOffsetX ?? content.coverOffsetX ?? 0;
+  const offsetY = item?.coverOffsetY ?? content.coverOffsetY ?? 0;
+  const transformStyle: React.CSSProperties | undefined =
+    scale !== 100 || offsetX !== 0 || offsetY !== 0
+      ? {
+          transform: `translate(${offsetX}%, ${offsetY}%) scale(${scale / 100})`,
+          transformOrigin: "center center",
+        }
+      : undefined;
 
   // Detail mode with video (either uploaded or fallback demo)
   if (mode === "detail" && isVideo) {
@@ -202,6 +216,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
             src={url}
             poster={poster}
             title={item?.name || content.title}
+            coverStyle={transformStyle}
           />
         </div>
       );
@@ -214,6 +229,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
           poster={poster}
           isDemo={true}
           title={content.title}
+          coverStyle={transformStyle}
         />
       </div>
     );
@@ -225,8 +241,12 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
       <div className={`media-preview media-preview-${mode}`}>
         {item.type.startsWith("video/") ? (
           <>
-            {posters[item.id] ? (
-              <img src={posters[item.id]} alt="" />
+            {posters[item.id] || item.coverUrl ? (
+              <img
+                src={posters[item.id] || item.coverUrl}
+                alt=""
+                style={transformStyle}
+              />
             ) : (
               <video key={url} src={url} muted playsInline preload="metadata" aria-hidden="true" />
             )}
@@ -240,6 +260,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
           <img
             src={url}
             alt={content.format === "carrossel" ? `${content.title}, imagem ${slideIndex + 1}` : content.title}
+            style={transformStyle}
           />
         )}
       </div>

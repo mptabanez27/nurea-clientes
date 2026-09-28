@@ -82,6 +82,9 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const coverInputRef = useRef<HTMLInputElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [coverEditorOpen, setCoverEditorOpen] = useState(false);
+  const [coverDraft, setCoverDraft] = useState({ scale: 100, x: 0, y: 0 });
+  const coverDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
@@ -239,20 +242,43 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
       if (!coverUrl) {
         await saveLocalFile(id, file);
       }
+      const coverAttachment: Attachment = {
+        id,
+        name: `Capa · ${file.name}`,
+        type: file.type,
+        size: file.size,
+        addedAt: todayStamp(),
+        url: coverUrl,
+      };
       onUpdate((current) => {
-        const nextAttachments = (current.attachments ?? []).map((item) =>
-          item.id === video.id ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl } : item
+        const existingAttachments = current.attachments ?? [];
+        const filteredAttachments = existingAttachments.filter(
+          (item) => item.id !== video.coverFileId && !item.name.startsWith("Capa · ")
+        );
+        const nextAttachments = [...filteredAttachments, coverAttachment].map((item) =>
+          item.id === video.id
+            ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl, coverScale: 100, coverOffsetX: 0, coverOffsetY: 0 }
+            : item
         );
         const nextMedia = (current.media ?? []).map((item) =>
-          item.id === video.id ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl } : item
+          item.id === video.id
+            ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl, coverScale: 100, coverOffsetX: 0, coverOffsetY: 0 }
+            : item
         );
         return {
-          ...revision(current, `Capa do vídeo alterada: ${video.name}`),
+          ...revision(current, `Capa do vídeo enviada como anexo: ${file.name}`),
+          coverUrl: coverUrl,
+          coverFileId: id,
+          coverScale: 100,
+          coverOffsetX: 0,
+          coverOffsetY: 0,
           attachments: nextAttachments,
           media: nextMedia,
         };
       });
       if (video.coverFileId) await deleteLocalFile(video.coverFileId).catch(() => {});
+      setCoverDraft({ scale: 100, x: 0, y: 0 });
+      setCoverEditorOpen(true);
     } catch {
       await deleteLocalFile(id).catch(() => {});
       setFileError("Não foi possível salvar a capa.");
@@ -273,6 +299,54 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const coverVideo = (selectedAttachment?.type.startsWith("video/") ? selectedAttachment : null)
     || content.attachments?.find(item => item.type.startsWith("video/"))
     || content.media?.find(item => item.type.startsWith("video/"));
+
+  const currentCoverAttachment = (coverVideo?.coverFileId ? content.attachments?.find(a => a.id === coverVideo.coverFileId) : null)
+    || (content.attachments?.find(a => a.name.startsWith("Capa · ")))
+    || null;
+
+  const coverDisplayUrl = (currentCoverAttachment?.id ? attachmentUrls[currentCoverAttachment.id] : undefined)
+    || currentCoverAttachment?.url
+    || coverVideo?.coverUrl
+    || content.coverUrl;
+
+  function setAttachmentAsCover(attachment: Attachment) {
+    if (!coverVideo) return;
+    const url = attachmentUrls[attachment.id] || attachment.url;
+    onUpdate((current) => {
+      const nextAttachments = (current.attachments ?? []).map((item) =>
+        item.id === coverVideo.id ? { ...item, coverFileId: attachment.id, coverUrl: url ?? item.coverUrl } : item
+      );
+      const nextMedia = (current.media ?? []).map((item) =>
+        item.id === coverVideo.id ? { ...item, coverFileId: attachment.id, coverUrl: url ?? item.coverUrl } : item
+      );
+      return {
+        ...revision(current, `Capa do vídeo definida: ${attachment.name}`),
+        coverUrl: url,
+        coverFileId: attachment.id,
+        attachments: nextAttachments,
+        media: nextMedia,
+      };
+    });
+    setFeedback(`"${attachment.name}" definida como capa do vídeo.`);
+    setTimeout(() => setFeedback(""), 3000);
+  }
+
+  function openCoverEditor() {
+    if (!coverDisplayUrl) {
+      coverInputRef.current?.click();
+      return;
+    }
+    const currentScale = coverVideo?.coverScale ?? content.coverScale ?? 100;
+    const currentX = coverVideo?.coverOffsetX ?? content.coverOffsetX ?? 0;
+    const currentY = coverVideo?.coverOffsetY ?? content.coverOffsetY ?? 0;
+    setCoverDraft({
+      scale: currentScale,
+      x: currentX,
+      y: currentY,
+    });
+    setCoverEditorOpen(true);
+  }
+
   const instagramHandle = getInstagramHandle(clientSlug || clientName);
   const totalSlides = content.media?.length ?? content.slides?.length ?? 1;
 
@@ -467,8 +541,117 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
             </form> : <>
               <div ref={captionRef} className="detail-section"><div className="detail-section-head"><FileText size={19} /><h3>Legenda</h3>{role === "equipe" && <button className="detail-inline-edit" onClick={startEdit}>Editar</button>}</div><div className="caption-block">{caption || "Legenda ainda não adicionada."}</div></div>
               <div ref={attachmentsRef} className="detail-section"><div className="detail-section-head"><Paperclip size={19} /><h3>Anexos</h3>{role === "equipe" && <><input ref={uploadRef} className="sr-only" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx" onChange={uploadFiles} aria-label="Selecionar anexos" /><button className="detail-inline-edit" onClick={() => uploadRef.current?.click()}><Plus size={15} /> Adicionar</button></>}</div>
-                {(content.attachments ?? []).length ? <div className="attachment-list">{content.attachments!.map((item) => <div className="attachment-row" key={item.id}>{item.type.startsWith("image/") || item.type.startsWith("video/") ? <button type="button" className={`attachment-preview-button ${selectedAttachmentId === item.id ? "is-selected" : ""}`} onClick={() => { setSelectedAttachmentId(item.id); bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label={`Pré-visualizar ${item.name}`} aria-pressed={selectedAttachmentId === item.id}>{item.type.startsWith("image/") && attachmentUrls[item.id] ? <img src={attachmentUrls[item.id]} alt="" /> : <span className="attachment-icon">{item.type.startsWith("video/") ? <Play size={20} fill="currentColor" /> : <Paperclip size={20} />}</span>}<span className="attachment-copy"><strong>{item.name}</strong><small>{(item.size / 1024 / 1024).toFixed(1)} MB · {item.type.startsWith("video/") ? "Vídeo · toque para assistir" : "Imagem · toque para ampliar"}</small></span></button> : <><span className="attachment-icon"><Paperclip size={20} /></span><div><strong>{item.name}</strong><small>{(item.size / 1024 / 1024).toFixed(1)} MB · Arquivo</small></div></>}{attachmentUrls[item.id] && <a href={attachmentUrls[item.id]} download={item.name} aria-label={`Baixar ${item.name}`}><Download size={18} /></a>}{role === "equipe" && <button onClick={() => removeAttachment(item.id)} aria-label={`Remover ${item.name}`}><X size={18} /></button>}</div>)}</div> : <p className="detail-empty">Nenhum anexo nesta publicação.</p>}{fileError && <p className="file-error" role="alert">{fileError}</p>}
-                {coverVideo && role === "equipe" && <div className="video-cover-actions"><input ref={coverInputRef} className="sr-only" type="file" accept="image/*" onChange={uploadVideoCover} aria-label="Imagem de capa do vídeo" /><button type="button" className="outline-button" disabled={coverSaving} onClick={() => coverInputRef.current?.click()}>{coverSaving ? "Salvando capa..." : coverVideo.coverFileId ? "Trocar capa do vídeo" : "Selecionar capa do vídeo"}</button><p>{coverVideo.coverFileId ? "Capa personalizada aplicada. Ela aparece antes do play e na prévia do feed quando este vídeo é a capa da publicação." : "Envie uma imagem para aparecer antes do play. O vídeo continua igual."}</p></div>}
+                {(content.attachments ?? []).length ? <div className="attachment-list">{content.attachments!.map((item) => {
+                  const isImage = item.type.startsWith("image/");
+                  const isVideo = item.type.startsWith("video/");
+                  const isCurrentCover = Boolean(
+                    coverVideo && (
+                      coverVideo.coverFileId === item.id ||
+                      (currentCoverAttachment && currentCoverAttachment.id === item.id) ||
+                      (coverVideo.coverUrl && (coverVideo.coverUrl === item.url || (attachmentUrls[item.id] && coverVideo.coverUrl === attachmentUrls[item.id])))
+                    )
+                  );
+                  return (
+                    <div className="attachment-row" key={item.id}>
+                      {isImage || isVideo ? (
+                        <button
+                          type="button"
+                          className={`attachment-preview-button ${selectedAttachmentId === item.id ? "is-selected" : ""}`}
+                          onClick={() => {
+                            setSelectedAttachmentId(item.id);
+                            bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                          aria-label={`Pré-visualizar ${item.name}`}
+                          aria-pressed={selectedAttachmentId === item.id}
+                        >
+                          {isImage && (attachmentUrls[item.id] || item.url) ? (
+                            <img src={attachmentUrls[item.id] || item.url} alt="" />
+                          ) : (
+                            <span className="attachment-icon">
+                              {isVideo ? <Play size={20} fill="currentColor" /> : <Paperclip size={20} />}
+                            </span>
+                          )}
+                          <span className="attachment-copy">
+                            <strong>{item.name}</strong>
+                            <small>
+                              {(item.size / 1024 / 1024).toFixed(1)} MB · {isVideo ? "Vídeo · toque para assistir" : "Imagem · toque para ampliar"}
+                            </small>
+                          </span>
+                        </button>
+                      ) : (
+                        <>
+                          <span className="attachment-icon"><Paperclip size={20} /></span>
+                          <div>
+                            <strong>{item.name}</strong>
+                            <small>{(item.size / 1024 / 1024).toFixed(1)} MB · Arquivo</small>
+                          </div>
+                        </>
+                      )}
+                      {coverVideo && isImage && role === "equipe" && (
+                        isCurrentCover ? (
+                          <span className="attachment-cover-tag" title="Esta imagem está definida como capa do vídeo">
+                            <Check size={11} /> Capa
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="attachment-set-cover-btn"
+                            onClick={() => setAttachmentAsCover(item)}
+                            title="Definir como capa do vídeo"
+                          >
+                            Usar como capa
+                          </button>
+                        )
+                      )}
+                      {(attachmentUrls[item.id] || item.url) && (
+                        <a href={attachmentUrls[item.id] || item.url} download={item.name} aria-label={`Baixar ${item.name}`}>
+                          <Download size={18} />
+                        </a>
+                      )}
+                      {role === "equipe" && (
+                        <button onClick={() => removeAttachment(item.id)} aria-label={`Remover ${item.name}`}>
+                          <X size={18} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}</div> : <p className="detail-empty">Nenhum anexo nesta publicação.</p>}{fileError && <p className="file-error" role="alert">{fileError}</p>}
+                {coverVideo && role === "equipe" && (
+                  <div className="video-cover-actions">
+                    <input
+                      ref={coverInputRef}
+                      className="sr-only"
+                      type="file"
+                      accept="image/*"
+                      onChange={uploadVideoCover}
+                      aria-label="Imagem de capa do vídeo"
+                    />
+                    <div className="video-cover-btn-group">
+                      <button
+                        type="button"
+                        className="outline-button"
+                        disabled={coverSaving}
+                        onClick={() => coverInputRef.current?.click()}
+                      >
+                        {coverSaving ? "Salvando capa..." : (coverDisplayUrl ? "Trocar capa do vídeo" : "Selecionar capa do vídeo")}
+                      </button>
+                      {coverDisplayUrl && (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          onClick={openCoverEditor}
+                        >
+                          Ajustar enquadramento da capa (3:4)
+                        </button>
+                      )}
+                    </div>
+                    <p>
+                      {coverDisplayUrl
+                        ? "Capa personalizada vinculada aos anexos. Clique em 'Ajustar enquadramento' para reposicionar e aplicar zoom na prévia do feed."
+                        : "Envie uma foto de capa para o vídeo. Ela será salva como anexo e exibida no feed e antes do play."}
+                    </p>
+                  </div>
+                )}
               </div>
               {content.sharedToStory && <div className="shared-note"><CheckCircle2 size={16} /> Este post também foi compartilhado no Story.</div>}
               {content.status === "publicado" && content.publishedUrl && <a className="published-link" href={content.publishedUrl} target="_blank" rel="noopener noreferrer">Ver publicação no Instagram <ArrowRight size={15} /></a>}
@@ -496,6 +679,140 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
           {role === "equipe" && <button className="primary-button" onClick={startEdit}>Editar post</button>}
         </div>
       </div>
+      {coverEditorOpen && (
+        <div className="cover-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setCoverEditorOpen(false); }}>
+          <section className="cover-modal" role="dialog" aria-modal="true" aria-labelledby="cover-modal-title">
+            <button
+              type="button"
+              className="icon-button cover-modal-close"
+              onClick={() => setCoverEditorOpen(false)}
+              aria-label="Fechar ajuste de capa"
+            >
+              <X size={20} />
+            </button>
+            <span className="section-kicker">ENQUADRAMENTO DO FEED (3:4)</span>
+            <h2 id="cover-modal-title">Ajustar capa do vídeo</h2>
+            <p className="cover-modal-hint">
+              Arraste a imagem para reposicionar e ajuste o zoom para definir como ela ficará na prévia do feed.
+            </p>
+
+            <div
+              className="cover-modal-preview cover-modal-preview-draggable"
+              onPointerDown={(event) => {
+                if (!coverDisplayUrl) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                coverDragRef.current = {
+                  x: event.clientX,
+                  y: event.clientY,
+                  offsetX: coverDraft.x,
+                  offsetY: coverDraft.y,
+                };
+              }}
+              onPointerMove={(event) => {
+                const start = coverDragRef.current;
+                if (!start) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                setCoverDraft((draft) => ({
+                  ...draft,
+                  x: Math.max(-100, Math.min(100, start.offsetX + ((event.clientX - start.x) / rect.width) * 100)),
+                  y: Math.max(-100, Math.min(100, start.offsetY + ((event.clientY - start.y) / rect.height) * 100)),
+                }));
+              }}
+              onPointerUp={() => { coverDragRef.current = null; }}
+              onPointerCancel={() => { coverDragRef.current = null; }}
+            >
+              {coverDisplayUrl ? (
+                <img
+                  src={coverDisplayUrl}
+                  alt="Prévia do enquadramento"
+                  draggable={false}
+                  style={{
+                    transform: `translate(${coverDraft.x}%, ${coverDraft.y}%) scale(${coverDraft.scale / 100})`,
+                    transformOrigin: "center center",
+                  }}
+                />
+              ) : (
+                <div className="cover-modal-no-img">Nenhuma foto de capa selecionada</div>
+              )}
+              <div className="cover-modal-grid-overlay" aria-hidden="true">
+                <div className="grid-line-h1" />
+                <div className="grid-line-h2" />
+                <div className="grid-line-v1" />
+                <div className="grid-line-v2" />
+              </div>
+            </div>
+
+            <div className="cover-modal-controls">
+              <label htmlFor="cover-scale">
+                Zoom <strong>{coverDraft.scale}%</strong>
+              </label>
+              <input
+                id="cover-scale"
+                type="range"
+                min="100"
+                max="250"
+                step="1"
+                value={coverDraft.scale}
+                onChange={(event) =>
+                  setCoverDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))
+                }
+              />
+              <div className="cover-modal-helpers">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setCoverDraft({ scale: 100, x: 0, y: 0 })}
+                >
+                  Restaurar enquadramento
+                </button>
+              </div>
+              <div className="cover-modal-actions">
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={() => setCoverEditorOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    const roundedScale = Math.round(coverDraft.scale);
+                    const roundedX = Math.round(coverDraft.x);
+                    const roundedY = Math.round(coverDraft.y);
+                    onUpdate((current) => {
+                      const nextAttachments = (current.attachments ?? []).map((item) =>
+                        item.id === coverVideo?.id || (currentCoverAttachment && item.id === currentCoverAttachment.id)
+                          ? { ...item, coverScale: roundedScale, coverOffsetX: roundedX, coverOffsetY: roundedY }
+                          : item
+                      );
+                      const nextMedia = (current.media ?? []).map((item) =>
+                        item.id === coverVideo?.id
+                          ? { ...item, coverScale: roundedScale, coverOffsetX: roundedX, coverOffsetY: roundedY }
+                          : item
+                      );
+                      return {
+                        ...current,
+                        coverScale: roundedScale,
+                        coverOffsetX: roundedX,
+                        coverOffsetY: roundedY,
+                        attachments: nextAttachments,
+                        media: nextMedia,
+                      };
+                    });
+                    setCoverEditorOpen(false);
+                    setFeedback("Enquadramento salvo com sucesso!");
+                    setTimeout(() => setFeedback(""), 3000);
+                  }}
+                >
+                  Aplicar enquadramento
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   </div>;
 }

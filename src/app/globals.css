@@ -174,7 +174,7 @@ img{max-width:100%}
 .insta-media-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 3 / 4;
   background: #000000;
   overflow: hidden;
   display: flex;
@@ -191,6 +191,15 @@ img{max-width:100%}
 .insta-media-frame .artwork {
   width: 100%;
   height: 100%;
+}
+
+.insta-media-frame .media-preview img,
+.insta-media-frame .media-preview video,
+.feed-tile .media-preview > img,
+.feed-tile .media-preview > video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .insta-carousel-badge {
@@ -458,5 +467,215 @@ img{max-width:100%}
   backdrop-filter: blur(6px);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
 }
+
+/* Cover Framing Modal (Proporção 3:4) */
+.cover-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 27, 21, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 20px;
+  animation: fade-in 0.2s ease;
+}
+
+.cover-modal {
+  position: relative;
+  width: min(440px, 100%);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgba(7, 27, 21, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cover-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.cover-modal h2 {
+  font-size: 22px;
+  color: var(--forest);
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.cover-modal-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #69786e;
+  margin: 0 0 8px;
+}
+
+.cover-modal-preview {
+  position: relative;
+  width: 100%;
+  max-width: 255px;
+  aspect-ratio: 3 / 4;
+  margin: 0 auto;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000000;
+  border: 2px solid #e7ded2;
+  box-shadow: 0 8px 24px rgba(11, 30, 24, 0.12);
+  user-select: none;
+  touch-action: none;
+}
+
+.cover-modal-preview-draggable {
+  cursor: grab;
+}
+
+.cover-modal-preview-draggable:active {
+  cursor: grabbing;
+}
+
+.cover-modal-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  display: block;
+}
+
+.cover-modal-no-img {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #aebbb0;
+  font-size: 11px;
+  text-align: center;
+  padding: 20px;
+}
+
+.cover-modal-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.cover-modal-grid-overlay .grid-line-h1 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 33.33%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cover-modal-grid-overlay .grid-line-h2 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 66.66%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cover-modal-grid-overlay .grid-line-v1 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 33.33%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cover-modal-grid-overlay .grid-line-v2 {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 66.66%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.cover-modal-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.cover-modal-controls label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--forest);
+}
+
+.cover-modal-controls input[type="range"] {
+  width: 100%;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+
+.cover-modal-helpers {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cover-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.cover-modal-actions button {
+  flex: 1;
+}
+
+/* Video cover action buttons & attachment badges */
+.video-cover-btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.attachment-cover-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #2e6d4b;
+  background: #edf6ef;
+  border: 1px solid #c2e0c9;
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.attachment-set-cover-btn {
+  border: 1px solid #d5cfc2;
+  background: #ffffff;
+  color: var(--forest);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.attachment-set-cover-btn:hover {
+  border-color: var(--gold);
+  background: #fbf7ed;
+  color: #89652f;
+}
+
 
 
