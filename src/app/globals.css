@@ -703,58 +703,6 @@ img{max-width:100%}
   background: #f0ede6;
 }
 
-.insta-mobile-pill-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid #d5cfc2;
-  background: #ffffff;
-  color: var(--forest);
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  box-shadow: 0 2px 8px rgba(11, 30, 24, 0.05);
-  white-space: nowrap;
-}
-
-.insta-mobile-pill-btn:hover {
-  border-color: var(--gold);
-  background: #fbf7ed;
-  color: #89652f;
-  transform: translateY(-1px);
-}
-
-.feed-card-actions-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.feed-card-framing-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid #d8d5cb;
-  background: #ffffff;
-  color: #55705d;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 9px;
-  font-weight: 750;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.feed-card-framing-btn:hover {
-  border-color: var(--gold);
-  color: #89652f;
-  background: #fcfaf5;
-}
-
 /* Instagram Mobile Feed Simulation Modal */
 .insta-sim-backdrop {
   position: fixed;

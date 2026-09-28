@@ -127,6 +127,36 @@ export function InteractiveVideoPlayer({
 export default function MediaPreview({ content, brand, mode = "grid", slideIndex = 0, attachment }: Props) {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [posters, setPosters] = useState<Record<string, string>>({});
+  const [coverBlobUrl, setCoverBlobUrl] = useState<string | null>(null);
+
+  const coverAttachment =
+    (content.coverFileId ? content.attachments?.find((a) => a.id === content.coverFileId) : null) ||
+    content.attachments?.find((a) => a.name?.startsWith("Capa · "));
+
+  const coverFileId = content.coverFileId || coverAttachment?.id;
+  const directCoverUrl = content.coverUrl || coverAttachment?.url;
+
+  useEffect(() => {
+    let active = true;
+    let createdUrl: string | null = null;
+    if (coverFileId && !directCoverUrl) {
+      getLocalFile(coverFileId)
+        .then((blob) => {
+          if (blob && active) {
+            createdUrl = URL.createObjectURL(blob);
+            setCoverBlobUrl(createdUrl);
+          }
+        })
+        .catch(() => {});
+    } else {
+      setCoverBlobUrl(null);
+    }
+    return () => {
+      active = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
+    };
+  }, [coverFileId, directCoverUrl]);
+
   const items = useMemo(() => {
     if (attachment) return [attachment];
     if (content.media?.length) return content.media;
@@ -194,11 +224,15 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
   const item = items[Math.min(slideIndex, Math.max(0, items.length - 1))];
   const url = item ? urls[item.id] || item.url : undefined;
   const isVideo = item ? item.type.startsWith("video/") : content.format === "reels";
-  const poster = item ? posters[item.id] || item.coverUrl || content.coverUrl : content.coverUrl;
+  const effectiveCover =
+    directCoverUrl ||
+    coverBlobUrl ||
+    (item ? posters[item.id] || item.coverUrl : undefined) ||
+    content.coverUrl;
 
-  const scale = item?.coverScale ?? content.coverScale ?? 100;
-  const offsetX = item?.coverOffsetX ?? content.coverOffsetX ?? 0;
-  const offsetY = item?.coverOffsetY ?? content.coverOffsetY ?? 0;
+  const scale = content.coverScale ?? item?.coverScale ?? 100;
+  const offsetX = content.coverOffsetX ?? item?.coverOffsetX ?? 0;
+  const offsetY = content.coverOffsetY ?? item?.coverOffsetY ?? 0;
   const transformStyle: React.CSSProperties | undefined =
     scale !== 100 || offsetX !== 0 || offsetY !== 0
       ? {
@@ -214,7 +248,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
         <div className="media-preview media-preview-detail">
           <InteractiveVideoPlayer
             src={url}
-            poster={poster}
+            poster={effectiveCover}
             title={item?.name || content.title}
             coverStyle={transformStyle}
           />
@@ -226,7 +260,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
       <div className="media-preview media-preview-detail">
         <InteractiveVideoPlayer
           src="/sample-reel.mp4"
-          poster={poster}
+          poster={effectiveCover}
           isDemo={true}
           title={content.title}
           coverStyle={transformStyle}
@@ -241,14 +275,14 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
       <div className={`media-preview media-preview-${mode}`}>
         {item.type.startsWith("video/") ? (
           <>
-            {poster ? (
+            {effectiveCover ? (
               <img
-                src={poster}
+                src={effectiveCover}
                 alt=""
                 style={transformStyle}
               />
             ) : (
-              <video key={url} src={url} poster={poster} muted playsInline preload="metadata" aria-hidden="true" style={transformStyle} />
+              <video key={url} src={url} poster={effectiveCover} muted playsInline preload="metadata" aria-hidden="true" style={transformStyle} />
             )}
             {mode !== "detail" && (
               <span className="media-video-mark" aria-hidden="true">
@@ -268,11 +302,11 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
   }
 
   // If there is a poster for video even without video url loaded
-  if (isVideo && poster) {
+  if (isVideo && effectiveCover) {
     return (
       <div className={`media-preview media-preview-${mode}`}>
         <img
-          src={poster}
+          src={effectiveCover}
           alt=""
           style={transformStyle}
         />

@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronsUpDown,
-  Crop,
   FileText,
   Film,
   Grid,
@@ -34,7 +33,6 @@ import {
   PlusSquare,
   RotateCcw,
   Search,
-  Smartphone,
   UserCheck,
   X,
 } from "lucide-react";
@@ -137,10 +135,6 @@ export default function Portal({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [instaFeedOpen, setInstaFeedOpen] = useState(false);
-  const [framingContent, setFramingContent] = useState<Content | null>(null);
-  const [feedCoverDraft, setFeedCoverDraft] = useState({ scale: 100, x: 0, y: 0 });
-  const [framingImageUrl, setFramingImageUrl] = useState<string | null>(null);
-  const feedCoverDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const logoButtonRef = useRef<HTMLButtonElement>(null);
   const logoModalCloseRef = useRef<HTMLButtonElement>(null);
@@ -483,73 +477,6 @@ export default function Portal({
     });
   }
 
-  async function openFramingForPost(content: Content) {
-    setFramingContent(content);
-    setFeedCoverDraft({
-      scale: content.coverScale ?? 100,
-      x: content.coverOffsetX ?? 0,
-      y: content.coverOffsetY ?? 0,
-    });
-
-    let imgUrl: string | null = content.coverUrl ?? null;
-    if (!imgUrl && content.coverFileId) {
-      const file = await getLocalFile(content.coverFileId);
-      if (file) imgUrl = URL.createObjectURL(file);
-    }
-    if (!imgUrl) {
-      const media = content.media || content.attachments || [];
-      const itemWithCover = media.find((m) => m.coverUrl || m.coverFileId);
-      if (itemWithCover?.coverUrl) {
-        imgUrl = itemWithCover.coverUrl;
-      } else if (itemWithCover?.coverFileId) {
-        const file = await getLocalFile(itemWithCover.coverFileId);
-        if (file) imgUrl = URL.createObjectURL(file);
-      } else {
-        const imageItem = media.find((m) => m.type.startsWith("image/"));
-        if (imageItem?.url) {
-          imgUrl = imageItem.url;
-        } else if (imageItem) {
-          const file = await getLocalFile(imageItem.id);
-          if (file) imgUrl = URL.createObjectURL(file);
-        }
-      }
-    }
-    setFramingImageUrl(imgUrl);
-  }
-
-  function saveFeedCoverFraming() {
-    if (!framingContent) return;
-    const roundedScale = Math.round(feedCoverDraft.scale);
-    const roundedX = Math.round(feedCoverDraft.x);
-    const roundedY = Math.round(feedCoverDraft.y);
-
-    updateContent(framingContent.id, (prev) => {
-      const updatedMedia = prev.media?.map((m) => ({
-        ...m,
-        coverScale: roundedScale,
-        coverOffsetX: roundedX,
-        coverOffsetY: roundedY,
-      }));
-      const updatedAttachments = prev.attachments?.map((m) => ({
-        ...m,
-        coverScale: roundedScale,
-        coverOffsetX: roundedX,
-        coverOffsetY: roundedY,
-      }));
-
-      return {
-        ...prev,
-        coverScale: roundedScale,
-        coverOffsetX: roundedX,
-        coverOffsetY: roundedY,
-        media: updatedMedia,
-        attachments: updatedAttachments,
-      };
-    });
-    setFramingContent(null);
-    setFramingImageUrl(null);
-  }
-
   function actionOnContent(id: string, status: ContentStatus, action: string, note?: string) {
     updateContent(id, (content) => ({
       ...content,
@@ -808,46 +735,35 @@ export default function Portal({
                 <h2>Prévia do feed</h2>
                 <p>Abra um post, confira a legenda e os anexos e aprove ou peça um ajuste.</p>
               </div>
-              <div className="feed-view-controls">
+              <div className="view-switch" aria-label="Modo de visualização">
+                <button
+                  className={feedMode === "grid" ? "active" : ""}
+                  onClick={() => setFeedMode("grid")}
+                  aria-label="Ver grade"
+                  title="Ver grade"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+                <button
+                  className={feedMode === "list" ? "active" : ""}
+                  onClick={() => setFeedMode("list")}
+                  aria-label="Ver lista"
+                  title="Ver lista"
+                >
+                  <List size={18} />
+                </button>
                 <button
                   type="button"
-                  className="insta-mobile-pill-btn"
+                  className={`insta-switch-btn ${instaFeedOpen ? "active" : ""}`}
                   onClick={() => setInstaFeedOpen(true)}
-                  title="Abrir simulação do feed no Instagram Mobile"
+                  aria-label="Simulação Instagram Mobile"
+                  title="Simulação Instagram Mobile"
                 >
-                  <Smartphone size={15} />
-                  <span>Simulação Instagram</span>
+                  <Instagram size={18} />
                 </button>
-                <div className="view-switch" aria-label="Modo de visualização">
-                  <button
-                    className={feedMode === "grid" ? "active" : ""}
-                    onClick={() => setFeedMode("grid")}
-                    aria-label="Ver grade"
-                    title="Ver grade"
-                  >
-                    <LayoutGrid size={18} />
-                  </button>
-                  <button
-                    className={feedMode === "list" ? "active" : ""}
-                    onClick={() => setFeedMode("list")}
-                    aria-label="Ver lista"
-                    title="Ver lista"
-                  >
-                    <List size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`insta-switch-btn ${instaFeedOpen ? "active" : ""}`}
-                    onClick={() => setInstaFeedOpen(true)}
-                    aria-label="Simulação Instagram Mobile"
-                    title="Simulação Instagram Mobile"
-                  >
-                    <Instagram size={18} />
-                  </button>
-                </div>
               </div>
             </div>
-            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><div className="feed-card-actions-meta">{role === "equipe" && <button type="button" className="feed-card-framing-btn" onClick={(e) => { e.stopPropagation(); openFramingForPost(content); }} title="Ajustar enquadramento da capa"><Crop size={12} /><span>Enquadrar</span></button>}<span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
+            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
             {displayedFeed.length === 0 && <div className="empty-state">{pendingOnly ? "Tudo revisado. Não há posts aguardando sua aprovação." : "Nenhum conteúdo disponível neste mês."}{pendingOnly && <button className="text-button" onClick={() => setPendingOnly(false)}>Ver feed completo</button>}</div>}
             <div className="feed-footer"><span><span className="footer-line" /> CONSTRUINDO UMA PRESENÇA COM PROPÓSITO</span><button onClick={() => navigate("stories")}>Ver Stories <ArrowRight size={17} /></button></div>
           </>}
@@ -929,132 +845,7 @@ export default function Portal({
         <button type="submit" className="primary-button" disabled={newSaving}><Plus size={16} /> {newSaving ? "Salvando..." : "Criar conteúdo"}</button>
       </form></div>}
 
-      {framingContent && (
-        <div
-          className="cover-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setFramingContent(null);
-              setFramingImageUrl(null);
-            }
-          }}
-        >
-          <section className="cover-modal" role="dialog" aria-modal="true" aria-labelledby="cover-modal-title">
-            <button
-              type="button"
-              className="icon-button cover-modal-close"
-              onClick={() => {
-                setFramingContent(null);
-                setFramingImageUrl(null);
-              }}
-              aria-label="Fechar ajuste de enquadramento"
-            >
-              <X size={20} />
-            </button>
-            <span className="section-kicker">PRÉVIA DO FEED (PROPORÇÃO 3:4)</span>
-            <h2 id="cover-modal-title">
-              {framingContent.postNumber ? `POST ${framingContent.postNumber}` : "Enquadrar Capa"}
-            </h2>
-            <p className="cover-modal-hint">
-              Arraste a imagem para reposicionar e use a barra de zoom para aproximar. Este enquadramento aparecerá na grade do feed.
-            </p>
 
-            <div
-              className={`cover-modal-preview ${framingImageUrl ? "cover-modal-preview-draggable" : ""}`}
-              onPointerDown={(event) => {
-                if (!framingImageUrl) return;
-                event.currentTarget.setPointerCapture(event.pointerId);
-                feedCoverDragRef.current = {
-                  x: event.clientX,
-                  y: event.clientY,
-                  offsetX: feedCoverDraft.x,
-                  offsetY: feedCoverDraft.y,
-                };
-              }}
-              onPointerMove={(event) => {
-                const start = feedCoverDragRef.current;
-                if (!start) return;
-                const rect = event.currentTarget.getBoundingClientRect();
-                const size = Math.max(rect.width, rect.height);
-                setFeedCoverDraft((draft) => ({
-                  ...draft,
-                  x: Math.max(-100, Math.min(100, start.offsetX + ((event.clientX - start.x) / size) * 100)),
-                  y: Math.max(-100, Math.min(100, start.offsetY + ((event.clientY - start.y) / size) * 100)),
-                }));
-              }}
-              onPointerUp={() => {
-                feedCoverDragRef.current = null;
-              }}
-              onPointerCancel={() => {
-                feedCoverDragRef.current = null;
-              }}
-            >
-              {framingImageUrl ? (
-                <img
-                  src={framingImageUrl}
-                  alt={`Capa de ${framingContent.title}`}
-                  draggable={false}
-                  style={{
-                    transform: `translate(${feedCoverDraft.x}%, ${feedCoverDraft.y}%) scale(${feedCoverDraft.scale / 100})`,
-                    transformOrigin: "center center",
-                  }}
-                />
-              ) : (
-                <div className="cover-modal-no-img">
-                  <span>Nenhuma imagem ou capa adicionada neste post ainda. Adicione uma mídia nos detalhes para ajustar o enquadramento.</span>
-                </div>
-              )}
-              <div className="cover-modal-grid-overlay" aria-hidden="true">
-                <div className="grid-line-h1" />
-                <div className="grid-line-h2" />
-                <div className="grid-line-v1" />
-                <div className="grid-line-v2" />
-              </div>
-            </div>
-
-            <div className="cover-modal-controls">
-              <label htmlFor="cover-scale">
-                Zoom <strong>{feedCoverDraft.scale}%</strong>
-              </label>
-              <input
-                id="cover-scale"
-                type="range"
-                min="50"
-                max="220"
-                step="5"
-                value={feedCoverDraft.scale}
-                onChange={(event) =>
-                  setFeedCoverDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))
-                }
-              />
-              <div className="cover-modal-helpers">
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setFeedCoverDraft({ scale: 100, x: 0, y: 0 })}
-                >
-                  Restaurar padrão
-                </button>
-              </div>
-              <div className="cover-modal-actions">
-                <button
-                  type="button"
-                  className="outline-button"
-                  onClick={() => {
-                    setFramingContent(null);
-                    setFramingImageUrl(null);
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button type="button" className="primary-button" onClick={saveFeedCoverFraming}>
-                  Aplicar enquadramento
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
 
       {instaFeedOpen && (
         <div

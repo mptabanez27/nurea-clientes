@@ -242,11 +242,12 @@ export async function loadWorkspaceData(
   const contents: Content[] = (contentsData || []).map((row) => {
     const rawMedia = (row.media_urls || []) as any[];
     const videoItem = rawMedia.find((m: any) => m.type?.startsWith("video/")) || rawMedia[0];
-    const coverScale = videoItem?.coverScale ?? (rawMedia.find((m: any) => m.coverScale !== undefined)?.coverScale);
-    const coverOffsetX = videoItem?.coverOffsetX ?? (rawMedia.find((m: any) => m.coverOffsetX !== undefined)?.coverOffsetX);
-    const coverOffsetY = videoItem?.coverOffsetY ?? (rawMedia.find((m: any) => m.coverOffsetY !== undefined)?.coverOffsetY);
-    const coverUrl = videoItem?.coverUrl ?? (rawMedia.find((m: any) => m.coverUrl)?.coverUrl);
-    const coverFileId = videoItem?.coverFileId ?? (rawMedia.find((m: any) => m.coverFileId)?.coverFileId);
+    const coverAttachment = rawMedia.find((m: any) => m.name?.startsWith("Capa · ") || (m.coverScale !== undefined && m.coverScale !== 100));
+    const coverScale = coverAttachment?.coverScale ?? videoItem?.coverScale ?? (rawMedia.find((m: any) => m.coverScale !== undefined)?.coverScale);
+    const coverOffsetX = coverAttachment?.coverOffsetX ?? videoItem?.coverOffsetX ?? (rawMedia.find((m: any) => m.coverOffsetX !== undefined)?.coverOffsetX);
+    const coverOffsetY = coverAttachment?.coverOffsetY ?? videoItem?.coverOffsetY ?? (rawMedia.find((m: any) => m.coverOffsetY !== undefined)?.coverOffsetY);
+    const coverUrl = coverAttachment?.url ?? videoItem?.coverUrl ?? (rawMedia.find((m: any) => m.coverUrl)?.coverUrl);
+    const coverFileId = coverAttachment?.id ?? videoItem?.coverFileId ?? (rawMedia.find((m: any) => m.coverFileId)?.coverFileId);
 
     const primaryMedia = row.format === "reels"
       ? (rawMedia.filter((m: any) => m.type?.startsWith("video/")).length > 0 ? rawMedia.filter((m: any) => m.type?.startsWith("video/")) : rawMedia)
@@ -361,7 +362,7 @@ export async function saveContentRecord(
     // Also propagate content-level cover properties to the video or primary media item
     if (content.coverScale !== undefined || content.coverOffsetX !== undefined || content.coverOffsetY !== undefined) {
       for (const [id, item] of mergedMap.entries()) {
-        if (item.type?.startsWith("video/") || item.id === content.coverFileId) {
+        if (item.type?.startsWith("video/") || item.id === content.coverFileId || item.name?.startsWith("Capa · ")) {
           mergedMap.set(id, {
             ...item,
             coverScale: content.coverScale ?? item.coverScale,

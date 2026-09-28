@@ -783,15 +783,19 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                     const roundedY = Math.round(coverDraft.y);
                     onUpdate((current) => {
                       const nextAttachments = (current.attachments ?? []).map((item) =>
-                        item.id === coverVideo?.id || (currentCoverAttachment && item.id === currentCoverAttachment.id)
+                        item.id === coverVideo?.id ||
+                        (currentCoverAttachment && item.id === currentCoverAttachment.id) ||
+                        item.name?.startsWith("Capa · ") ||
+                        item.type?.startsWith("video/")
                           ? { ...item, coverScale: roundedScale, coverOffsetX: roundedX, coverOffsetY: roundedY }
                           : item
                       );
-                      const nextMedia = (current.media ?? []).map((item) =>
-                        item.id === coverVideo?.id
-                          ? { ...item, coverScale: roundedScale, coverOffsetX: roundedX, coverOffsetY: roundedY }
-                          : item
-                      );
+                      const nextMedia = (current.media ?? []).map((item) => ({
+                        ...item,
+                        coverScale: roundedScale,
+                        coverOffsetX: roundedX,
+                        coverOffsetY: roundedY,
+                      }));
                       return {
                         ...current,
                         coverScale: roundedScale,

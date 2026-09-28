@@ -13,8 +13,7 @@
 - [x] Mockup fiel do Instagram no detalhe da publicação (avatar, @usuário, botão seguir, barra de ações interativa com curtir/salvar/comentar e legenda formatada).
 - [x] Proporção 3:4 alinhada entre prévia do feed e detalhe do post, eliminando corte quadrado forçado.
 - [x] Capa do vídeo salva como anexo na lista de anexos e suporte a definir anexos de imagem existentes como capa.
-- [x] Enquadramento da capa de vídeo com ajuste interativo de zoom e deslocamento (pan & zoom) em proporção 3:4, refletido no feed e no detalhe.
-- [x] Enquadramento direto a partir da prévia do feed (botão Enquadrar no card de cada post com proporção 3:4 e grade de terços).
+- [x] Enquadramento de capa ajustado na edição do post replicado com fidelidade na grade do feed e na simulação Instagram mobile.
 - [x] Simulação de feed Instagram Mobile em pop-up com grade de 3 colunas (3:4), badges de formato (Reels/Carrossel) e abertura direta de detalhes ao clicar (sem bio nem seguidores).
 - [x] Player de vídeo interativo para Reels/vídeo: execução real sob clique, controles nativos de reprodução e vídeo demonstrativo de fallback quando ainda não há arquivo enviado.
 - [x] Planejamento local por cliente/mês: upload imagem/PDF, substituição, remoção, versão, histórico e aprovação.
