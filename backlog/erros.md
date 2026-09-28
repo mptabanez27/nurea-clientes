@@ -1,0 +1,18 @@
+# Registro de erros
+
+## Resolvidos em 24/09/2026
+
+- **Card de vídeo em preparação parecia sumir no mobile após recarga:** redimensionar a tela mantinha os oito cards da Equipe, mas recarregar restaurava o papel Cliente e ocultava os itens em preparação (cinco cards visíveis no teste). A escolha Equipe/Cliente agora persiste no navegador; a regra de ocultar rascunhos do Cliente foi preservada. Conferido em 390×844 após recarga.
+- **Aviso de raiz incorreta do Next.js:** ele detectou também `E:\dev\package-lock.json`. Corrigido com `turbopack.root` no `next.config.ts`. Compilação passou novamente.
+- **Breadcrumb concatenado no celular:** os nomes de contexto ficavam juntos quando separadores eram ocultados. Marcado o trecho de desktop separadamente e mantido apenas o título da tela no mobile.
+- **Seletor ambíguo no teste de Stories:** o teste encontrava tanto o item do menu quanto “Ver Stories”. Corrigido o seletor de teste; não era falha da aplicação.
+
+## Acompanhar
+
+- Não foi encontrado um bug bloqueante nos fluxos testados. Ainda faltam testes automatizados permanentes, acessibilidade completa e testes com mídia real.
+
+Ao identificar um problema, acrescente data, ambiente, passos para reproduzir, resultado esperado, resultado observado, impacto e estado. Não registre credenciais nem dados reais de clientes.
+
+## Resolvido em 28/09/2026
+
+- **Card do feed sem número de post:** no protótipo local, a prévia de um registro salvo sem `postNumber` exibia `POST —` (referência visual enviada em 28/09/2026). Esperado: toda publicação do feed ter número fixo. A grade agora preenche números ausentes, ordena pelo número e apresenta POST em destaque; novos registros recebem o próximo número. Impacto: identificação inconsistente das publicações para conversa com o cliente. Estado: corrigido no código; não foi feito teste automatizado.
