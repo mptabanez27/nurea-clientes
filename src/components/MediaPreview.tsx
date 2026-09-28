@@ -241,14 +241,14 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
       <div className={`media-preview media-preview-${mode}`}>
         {item.type.startsWith("video/") ? (
           <>
-            {posters[item.id] || item.coverUrl ? (
+            {poster ? (
               <img
-                src={posters[item.id] || item.coverUrl}
+                src={poster}
                 alt=""
                 style={transformStyle}
               />
             ) : (
-              <video key={url} src={url} muted playsInline preload="metadata" aria-hidden="true" />
+              <video key={url} src={url} poster={poster} muted playsInline preload="metadata" aria-hidden="true" style={transformStyle} />
             )}
             {mode !== "detail" && (
               <span className="media-video-mark" aria-hidden="true">
@@ -262,6 +262,24 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
             alt={content.format === "carrossel" ? `${content.title}, imagem ${slideIndex + 1}` : content.title}
             style={transformStyle}
           />
+        )}
+      </div>
+    );
+  }
+
+  // If there is a poster for video even without video url loaded
+  if (isVideo && poster) {
+    return (
+      <div className={`media-preview media-preview-${mode}`}>
+        <img
+          src={poster}
+          alt=""
+          style={transformStyle}
+        />
+        {mode !== "detail" && (
+          <span className="media-video-mark" aria-hidden="true">
+            <Play size={18} fill="currentColor" />
+          </span>
         )}
       </div>
     );

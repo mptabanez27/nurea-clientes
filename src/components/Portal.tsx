@@ -8,20 +8,34 @@ import { deleteLocalFile, getLocalFile, saveLocalFile } from "@/lib/localFiles";
 import { mediaAccept, validateMediaFiles } from "@/lib/media";
 import {
   ArrowRight,
+  Bell,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronsUpDown,
+  Crop,
   FileText,
+  Film,
+  Grid,
   Grid3X3,
   GripVertical,
+  Home,
+  Instagram,
+  Layers,
   LayoutGrid,
   Link2,
   List,
   LogOut,
   Menu,
   MessageCircle,
+  MoreHorizontal,
+  Play,
   Plus,
+  PlusSquare,
   RotateCcw,
+  Search,
+  Smartphone,
+  UserCheck,
   X,
 } from "lucide-react";
 import {
@@ -56,6 +70,16 @@ function uid() {
     const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+function getInstagramHandle(name: string) {
+  return "@" + name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 function StatusBadge({ status }: { status: ContentStatus | Workspace["plan"]["status"] }) {
@@ -112,6 +136,11 @@ export default function Portal({
   const [newMonthKey, setNewMonthKey] = useState("2026-10");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [instaFeedOpen, setInstaFeedOpen] = useState(false);
+  const [framingContent, setFramingContent] = useState<Content | null>(null);
+  const [feedCoverDraft, setFeedCoverDraft] = useState({ scale: 100, x: 0, y: 0 });
+  const [framingImageUrl, setFramingImageUrl] = useState<string | null>(null);
+  const feedCoverDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const logoButtonRef = useRef<HTMLButtonElement>(null);
   const logoModalCloseRef = useRef<HTMLButtonElement>(null);
@@ -454,6 +483,73 @@ export default function Portal({
     });
   }
 
+  async function openFramingForPost(content: Content) {
+    setFramingContent(content);
+    setFeedCoverDraft({
+      scale: content.coverScale ?? 100,
+      x: content.coverOffsetX ?? 0,
+      y: content.coverOffsetY ?? 0,
+    });
+
+    let imgUrl: string | null = content.coverUrl ?? null;
+    if (!imgUrl && content.coverFileId) {
+      const file = await getLocalFile(content.coverFileId);
+      if (file) imgUrl = URL.createObjectURL(file);
+    }
+    if (!imgUrl) {
+      const media = content.media || content.attachments || [];
+      const itemWithCover = media.find((m) => m.coverUrl || m.coverFileId);
+      if (itemWithCover?.coverUrl) {
+        imgUrl = itemWithCover.coverUrl;
+      } else if (itemWithCover?.coverFileId) {
+        const file = await getLocalFile(itemWithCover.coverFileId);
+        if (file) imgUrl = URL.createObjectURL(file);
+      } else {
+        const imageItem = media.find((m) => m.type.startsWith("image/"));
+        if (imageItem?.url) {
+          imgUrl = imageItem.url;
+        } else if (imageItem) {
+          const file = await getLocalFile(imageItem.id);
+          if (file) imgUrl = URL.createObjectURL(file);
+        }
+      }
+    }
+    setFramingImageUrl(imgUrl);
+  }
+
+  function saveFeedCoverFraming() {
+    if (!framingContent) return;
+    const roundedScale = Math.round(feedCoverDraft.scale);
+    const roundedX = Math.round(feedCoverDraft.x);
+    const roundedY = Math.round(feedCoverDraft.y);
+
+    updateContent(framingContent.id, (prev) => {
+      const updatedMedia = prev.media?.map((m) => ({
+        ...m,
+        coverScale: roundedScale,
+        coverOffsetX: roundedX,
+        coverOffsetY: roundedY,
+      }));
+      const updatedAttachments = prev.attachments?.map((m) => ({
+        ...m,
+        coverScale: roundedScale,
+        coverOffsetX: roundedX,
+        coverOffsetY: roundedY,
+      }));
+
+      return {
+        ...prev,
+        coverScale: roundedScale,
+        coverOffsetX: roundedX,
+        coverOffsetY: roundedY,
+        media: updatedMedia,
+        attachments: updatedAttachments,
+      };
+    });
+    setFramingContent(null);
+    setFramingImageUrl(null);
+  }
+
   function actionOnContent(id: string, status: ContentStatus, action: string, note?: string) {
     updateContent(id, (content) => ({
       ...content,
@@ -707,8 +803,51 @@ export default function Portal({
             </details>
             <div className="feed-toolbar"><button className={`pending-filter ${pendingOnly ? "active" : ""}`} aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>{pendingCount ? `${pendingCount} para aprovar` : "Nenhuma aprovação pendente"}{pendingOnly && " · Ver todos"}</button><div>{role === "equipe" && <button className="primary-button" disabled={feedContents.length >= 8} title={feedContents.length >= 8 ? "Limite máximo de 8 posts atingido para este mês" : undefined} onClick={() => { if (feedContents.length >= 8) { alert("Este cliente já atingiu o limite de 8 posts no feed para este mês. Exclua um post para adicionar outro, ou crie um Story."); return; } setNewFormat("arte"); setNewDate(`${activeMonthKey}-01`); setNewOpen(true); }}><Plus size={17} /> {feedContents.length >= 8 ? "Feed completo (8/8)" : "Novo conteúdo"}</button>}<button className="stories-shortcut" onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <ArrowRight size={14} /></button></div></div>
             {role === "equipe" && <div className="team-note"><strong>Visão da equipe</strong><span>Itens em preparação são visíveis apenas aqui. Arraste qualquer card para mudar sua posição e reordenar automaticamente a numeração do feed (máx. 8 posts).</span></div>}
-            <div className="section-heading"><div><h2>Prévia do feed</h2><p>Abra um post, confira a legenda e os anexos e aprove ou peça um ajuste.</p></div><div className="view-switch" aria-label="Modo de visualização"><button className={feedMode === "grid" ? "active" : ""} onClick={() => setFeedMode("grid")} aria-label="Ver grade" title="Ver grade"><LayoutGrid size={18} /></button><button className={feedMode === "list" ? "active" : ""} onClick={() => setFeedMode("list")} aria-label="Ver lista" title="Ver lista"><List size={18} /></button></div></div>
-            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
+            <div className="section-heading">
+              <div>
+                <h2>Prévia do feed</h2>
+                <p>Abra um post, confira a legenda e os anexos e aprove ou peça um ajuste.</p>
+              </div>
+              <div className="feed-view-controls">
+                <button
+                  type="button"
+                  className="insta-mobile-pill-btn"
+                  onClick={() => setInstaFeedOpen(true)}
+                  title="Abrir simulação do feed no Instagram Mobile"
+                >
+                  <Smartphone size={15} />
+                  <span>Simulação Instagram</span>
+                </button>
+                <div className="view-switch" aria-label="Modo de visualização">
+                  <button
+                    className={feedMode === "grid" ? "active" : ""}
+                    onClick={() => setFeedMode("grid")}
+                    aria-label="Ver grade"
+                    title="Ver grade"
+                  >
+                    <LayoutGrid size={18} />
+                  </button>
+                  <button
+                    className={feedMode === "list" ? "active" : ""}
+                    onClick={() => setFeedMode("list")}
+                    aria-label="Ver lista"
+                    title="Ver lista"
+                  >
+                    <List size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`insta-switch-btn ${instaFeedOpen ? "active" : ""}`}
+                    onClick={() => setInstaFeedOpen(true)}
+                    aria-label="Simulação Instagram Mobile"
+                    title="Simulação Instagram Mobile"
+                  >
+                    <Instagram size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><div className="feed-card-actions-meta">{role === "equipe" && <button type="button" className="feed-card-framing-btn" onClick={(e) => { e.stopPropagation(); openFramingForPost(content); }} title="Ajustar enquadramento da capa"><Crop size={12} /><span>Enquadrar</span></button>}<span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
             {displayedFeed.length === 0 && <div className="empty-state">{pendingOnly ? "Tudo revisado. Não há posts aguardando sua aprovação." : "Nenhum conteúdo disponível neste mês."}{pendingOnly && <button className="text-button" onClick={() => setPendingOnly(false)}>Ver feed completo</button>}</div>}
             <div className="feed-footer"><span><span className="footer-line" /> CONSTRUINDO UMA PRESENÇA COM PROPÓSITO</span><button onClick={() => navigate("stories")}>Ver Stories <ArrowRight size={17} /></button></div>
           </>}
@@ -789,6 +928,278 @@ export default function Portal({
         {newMediaError && <p className="file-error" role="alert">{newMediaError}</p>}
         <button type="submit" className="primary-button" disabled={newSaving}><Plus size={16} /> {newSaving ? "Salvando..." : "Criar conteúdo"}</button>
       </form></div>}
+
+      {framingContent && (
+        <div
+          className="cover-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setFramingContent(null);
+              setFramingImageUrl(null);
+            }
+          }}
+        >
+          <section className="cover-modal" role="dialog" aria-modal="true" aria-labelledby="cover-modal-title">
+            <button
+              type="button"
+              className="icon-button cover-modal-close"
+              onClick={() => {
+                setFramingContent(null);
+                setFramingImageUrl(null);
+              }}
+              aria-label="Fechar ajuste de enquadramento"
+            >
+              <X size={20} />
+            </button>
+            <span className="section-kicker">PRÉVIA DO FEED (PROPORÇÃO 3:4)</span>
+            <h2 id="cover-modal-title">
+              {framingContent.postNumber ? `POST ${framingContent.postNumber}` : "Enquadrar Capa"}
+            </h2>
+            <p className="cover-modal-hint">
+              Arraste a imagem para reposicionar e use a barra de zoom para aproximar. Este enquadramento aparecerá na grade do feed.
+            </p>
+
+            <div
+              className={`cover-modal-preview ${framingImageUrl ? "cover-modal-preview-draggable" : ""}`}
+              onPointerDown={(event) => {
+                if (!framingImageUrl) return;
+                event.currentTarget.setPointerCapture(event.pointerId);
+                feedCoverDragRef.current = {
+                  x: event.clientX,
+                  y: event.clientY,
+                  offsetX: feedCoverDraft.x,
+                  offsetY: feedCoverDraft.y,
+                };
+              }}
+              onPointerMove={(event) => {
+                const start = feedCoverDragRef.current;
+                if (!start) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const size = Math.max(rect.width, rect.height);
+                setFeedCoverDraft((draft) => ({
+                  ...draft,
+                  x: Math.max(-100, Math.min(100, start.offsetX + ((event.clientX - start.x) / size) * 100)),
+                  y: Math.max(-100, Math.min(100, start.offsetY + ((event.clientY - start.y) / size) * 100)),
+                }));
+              }}
+              onPointerUp={() => {
+                feedCoverDragRef.current = null;
+              }}
+              onPointerCancel={() => {
+                feedCoverDragRef.current = null;
+              }}
+            >
+              {framingImageUrl ? (
+                <img
+                  src={framingImageUrl}
+                  alt={`Capa de ${framingContent.title}`}
+                  draggable={false}
+                  style={{
+                    transform: `translate(${feedCoverDraft.x}%, ${feedCoverDraft.y}%) scale(${feedCoverDraft.scale / 100})`,
+                    transformOrigin: "center center",
+                  }}
+                />
+              ) : (
+                <div className="cover-modal-no-img">
+                  <span>Nenhuma imagem ou capa adicionada neste post ainda. Adicione uma mídia nos detalhes para ajustar o enquadramento.</span>
+                </div>
+              )}
+              <div className="cover-modal-grid-overlay" aria-hidden="true">
+                <div className="grid-line-h1" />
+                <div className="grid-line-h2" />
+                <div className="grid-line-v1" />
+                <div className="grid-line-v2" />
+              </div>
+            </div>
+
+            <div className="cover-modal-controls">
+              <label htmlFor="cover-scale">
+                Zoom <strong>{feedCoverDraft.scale}%</strong>
+              </label>
+              <input
+                id="cover-scale"
+                type="range"
+                min="50"
+                max="220"
+                step="5"
+                value={feedCoverDraft.scale}
+                onChange={(event) =>
+                  setFeedCoverDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))
+                }
+              />
+              <div className="cover-modal-helpers">
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setFeedCoverDraft({ scale: 100, x: 0, y: 0 })}
+                >
+                  Restaurar padrão
+                </button>
+              </div>
+              <div className="cover-modal-actions">
+                <button
+                  type="button"
+                  className="outline-button"
+                  onClick={() => {
+                    setFramingContent(null);
+                    setFramingImageUrl(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button type="button" className="primary-button" onClick={saveFeedCoverFraming}>
+                  Aplicar enquadramento
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {instaFeedOpen && (
+        <div
+          className="insta-sim-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setInstaFeedOpen(false);
+          }}
+        >
+          <div className="insta-sim-container">
+            <button
+              type="button"
+              className="insta-sim-close-btn"
+              onClick={() => setInstaFeedOpen(false)}
+              aria-label="Fechar simulação do Instagram"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="insta-phone-shell">
+              <div className="insta-phone-notch">
+                <div className="insta-phone-camera" />
+              </div>
+
+              <div className="insta-phone-status-bar">
+                <span>9:41</span>
+                <div className="insta-phone-status-icons">
+                  <span className="insta-phone-signal">●●●●</span>
+                  <span>5G</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              <header className="insta-sim-header">
+                <button
+                  type="button"
+                  className="insta-sim-back"
+                  onClick={() => setInstaFeedOpen(false)}
+                  aria-label="Voltar"
+                >
+                  <ChevronLeft size={22} />
+                </button>
+                <div className="insta-sim-title">
+                  <span>{getInstagramHandle(workspace.clientName).replace("@", "")}</span>
+                  <CheckCircle2 size={13} color="#0095f6" fill="#0095f6" />
+                </div>
+                <div className="insta-sim-top-actions">
+                  <button type="button" aria-label="Notificações">
+                    <Bell size={20} />
+                  </button>
+                  <button type="button" aria-label="Mais opções">
+                    <MoreHorizontal size={20} />
+                  </button>
+                </div>
+              </header>
+
+              {/* Clean Profile Header - NO bio, NO followers per user specification */}
+              <div className="insta-sim-profile-bar">
+                <div className="insta-sim-avatar-wrap">
+                  <div className="insta-sim-avatar">
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt={`Logo de ${workspace.clientName}`}
+                        style={{
+                          transform: `translate(${workspace.logoOffsetX ?? 0}%, ${workspace.logoOffsetY ?? 0}%) scale(${(workspace.logoScale ?? 100) / 100})`,
+                        }}
+                      />
+                    ) : (
+                      <span>{workspace.clientName.split(" ").map((p) => p[0]).slice(0, 2).join("")}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="insta-sim-profile-text">
+                  <strong>{workspace.clientName}</strong>
+                  <span>{getInstagramHandle(workspace.clientName)} · Grade do feed</span>
+                </div>
+              </div>
+
+              {/* Instagram Profile Tabs */}
+              <div className="insta-sim-tabs">
+                <button type="button" className="insta-sim-tab is-active" aria-label="Publicações">
+                  <Grid size={18} />
+                </button>
+                <button type="button" className="insta-sim-tab" aria-label="Reels">
+                  <Film size={18} />
+                </button>
+                <button type="button" className="insta-sim-tab" aria-label="Marcados">
+                  <UserCheck size={18} />
+                </button>
+              </div>
+
+              {/* 3-Column Instagram Feed Grid */}
+              <div className="insta-sim-scroll-area">
+                <div className="insta-sim-grid">
+                  {visibleFeed.map((content) => (
+                    <button
+                      key={content.id}
+                      type="button"
+                      className="insta-sim-tile"
+                      onClick={() => openDetail(content.id)}
+                      aria-label={`Abrir POST ${content.postNumber}: ${content.title}`}
+                    >
+                      <MediaPreview content={content} brand={workspace.clientName} mode="grid" />
+                      {content.format === "reels" && (
+                        <div className="insta-sim-tile-badge" title="Reels / Vídeo">
+                          <Play size={13} fill="#ffffff" />
+                        </div>
+                      )}
+                      {content.format === "carrossel" && (
+                        <div className="insta-sim-tile-badge" title="Carrossel">
+                          <Layers size={13} fill="#ffffff" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {visibleFeed.length === 0 && (
+                  <div className="insta-sim-empty">Nenhum post publicado no feed ainda.</div>
+                )}
+              </div>
+
+              {/* Bottom Nav Bar */}
+              <nav className="insta-sim-bottom-bar" aria-label="Navegação Instagram">
+                <span className="insta-sim-nav-icon"><Home size={21} /></span>
+                <span className="insta-sim-nav-icon"><Search size={21} /></span>
+                <span className="insta-sim-nav-icon"><PlusSquare size={21} /></span>
+                <span className="insta-sim-nav-icon"><Film size={21} /></span>
+                <span className="insta-sim-nav-avatar">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      style={{
+                        transform: `translate(${workspace.logoOffsetX ?? 0}%, ${workspace.logoOffsetY ?? 0}%) scale(${(workspace.logoScale ?? 100) / 100})`,
+                      }}
+                    />
+                  ) : (
+                    workspace.clientName.split(" ").map((p) => p[0]).slice(0, 2).join("")
+                  )}
+                </span>
+              </nav>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
