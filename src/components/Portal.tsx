@@ -13,6 +13,7 @@ import {
   ChevronsUpDown,
   FileText,
   Grid3X3,
+  GripVertical,
   LayoutGrid,
   Link2,
   List,
@@ -109,6 +110,8 @@ export default function Portal({
   const [logoError, setLogoError] = useState("");
   const [newMonthOpen, setNewMonthOpen] = useState(false);
   const [newMonthKey, setNewMonthKey] = useState("2026-10");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const logoButtonRef = useRef<HTMLButtonElement>(null);
   const logoModalCloseRef = useRef<HTMLButtonElement>(null);
@@ -118,6 +121,44 @@ export default function Portal({
   const logoUrl = logoPreview && logoPreview.id === workspace.logoFileId ? logoPreview.url : null;
   const activeMonthKey = workspace.monthKey ?? "2026-09";
   const monthKeys = Array.from(new Set([...Object.keys(workspace.months ?? {}), activeMonthKey])).sort().reverse();
+
+  function reorderFeed(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+
+    setWorkspace((prev) => {
+      const feedItems = prev.contents.filter((c) => c.format !== "story");
+      const storyItems = prev.contents.filter((c) => c.format === "story");
+
+      const sourceIndex = feedItems.findIndex((c) => c.id === sourceId);
+      const targetIndex = feedItems.findIndex((c) => c.id === targetId);
+
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+
+      const reordered = [...feedItems];
+      const [moved] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, moved);
+
+      // Renumera os posts estritamente de 1 até o total existente (máx 8)
+      const updatedFeed = reordered.slice(0, 8).map((item, idx) => ({
+        ...item,
+        postNumber: idx + 1,
+      }));
+
+      // Sincroniza a renumeração com o Supabase
+      fetch("/api/contents/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: updatedFeed.map((item) => ({ id: item.id, postNumber: item.postNumber })),
+        }),
+      }).catch(console.error);
+
+      return {
+        ...prev,
+        contents: [...updatedFeed, ...storyItems],
+      };
+    });
+  }
 
   function monthName(key: string) {
     const [year, month] = key.split("-").map(Number);
@@ -438,6 +479,10 @@ export default function Portal({
   async function createContent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newTitle.trim() || !newDate || newSaving) return;
+    if (newFormat !== "story" && feedContents.length >= 8) {
+      setNewMediaError("Limite de 8 posts no feed atingido para este mês. Exclua um post para adicionar outro, ou crie um Story.");
+      return;
+    }
     const error = validateMediaFiles(newMediaFiles, newFormat);
     if (error) { setNewMediaError(error); return; }
     setNewSaving(true);
@@ -461,7 +506,20 @@ export default function Portal({
       setNewSaving(false);
       return;
     }
-    const nextPostNum = newFormat !== "story" ? Math.max(workspace.nextPostNumber ?? 1, workspace.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1) : undefined;
+
+    // Encontra o primeiro número livre entre 1 e 8
+    let nextPostNum: number | undefined;
+    if (newFormat !== "story") {
+      const existingNums = new Set(feedContents.map((c) => c.postNumber).filter(Boolean));
+      for (let i = 1; i <= 8; i++) {
+        if (!existingNums.has(i)) {
+          nextPostNum = i;
+          break;
+        }
+      }
+      if (!nextPostNum) nextPostNum = Math.min(8, feedContents.length + 1);
+    }
+
     const newId = uid();
     const content: Content = {
       id: newId,
@@ -480,7 +538,15 @@ export default function Portal({
       attachments: savedMedia,
       ...(newFormat === "carrossel" ? { slides: [newTitle.trim()] } : {}),
     };
-    setWorkspace((prev) => ({ ...prev, contents: [...prev.contents, content], nextPostNumber: Math.max(prev.nextPostNumber ?? 1, (content.postNumber ?? 0) + 1) }));
+    setWorkspace((prev) => {
+      const nextContents = [...prev.contents, content];
+      const feed = nextContents
+        .filter((c) => c.format !== "story")
+        .sort((a, b) => (a.postNumber ?? 0) - (b.postNumber ?? 0))
+        .slice(0, 8);
+      const stories = nextContents.filter((c) => c.format === "story");
+      return { ...prev, contents: [...feed, ...stories] };
+    });
     setNewOpen(false);
     setNewTitle("");
     setNewCaption("");
@@ -639,10 +705,10 @@ export default function Portal({
               </div>)}
             </div>
             </details>
-            <div className="feed-toolbar"><button className={`pending-filter ${pendingOnly ? "active" : ""}`} aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>{pendingCount ? `${pendingCount} para aprovar` : "Nenhuma aprovação pendente"}{pendingOnly && " · Ver todos"}</button><div>{role === "equipe" && <button className="primary-button" onClick={() => { setNewFormat("arte"); setNewDate(`${activeMonthKey}-01`); setNewOpen(true); }}><Plus size={17} /> Novo conteúdo</button>}<button className="stories-shortcut" onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <ArrowRight size={14} /></button></div></div>
-            {role === "equipe" && <div className="team-note"><strong>Visão da equipe</strong><span>Itens em preparação são visíveis apenas aqui. Use “Visualizar como Cliente” para revisar a experiência do cliente.</span></div>}
+            <div className="feed-toolbar"><button className={`pending-filter ${pendingOnly ? "active" : ""}`} aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>{pendingCount ? `${pendingCount} para aprovar` : "Nenhuma aprovação pendente"}{pendingOnly && " · Ver todos"}</button><div>{role === "equipe" && <button className="primary-button" disabled={feedContents.length >= 8} title={feedContents.length >= 8 ? "Limite máximo de 8 posts atingido para este mês" : undefined} onClick={() => { if (feedContents.length >= 8) { alert("Este cliente já atingiu o limite de 8 posts no feed para este mês. Exclua um post para adicionar outro, ou crie um Story."); return; } setNewFormat("arte"); setNewDate(`${activeMonthKey}-01`); setNewOpen(true); }}><Plus size={17} /> {feedContents.length >= 8 ? "Feed completo (8/8)" : "Novo conteúdo"}</button>}<button className="stories-shortcut" onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <ArrowRight size={14} /></button></div></div>
+            {role === "equipe" && <div className="team-note"><strong>Visão da equipe</strong><span>Itens em preparação são visíveis apenas aqui. Arraste qualquer card para mudar sua posição e reordenar automaticamente a numeração do feed (máx. 8 posts).</span></div>}
             <div className="section-heading"><div><h2>Prévia do feed</h2><p>Abra um post, confira a legenda e os anexos e aprove ou peça um ajuste.</p></div><div className="view-switch" aria-label="Modo de visualização"><button className={feedMode === "grid" ? "active" : ""} onClick={() => setFeedMode("grid")} aria-label="Ver grade" title="Ver grade"><LayoutGrid size={18} /></button><button className={feedMode === "list" ? "active" : ""} onClick={() => setFeedMode("list")} aria-label="Ver lista" title="Ver lista"><List size={18} /></button></div></div>
-            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status}`}><div className="feed-card-meta"><strong className="feed-post-number">POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <button key={content.id} className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}><span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button>)}</div>}
+            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
             {displayedFeed.length === 0 && <div className="empty-state">{pendingOnly ? "Tudo revisado. Não há posts aguardando sua aprovação." : "Nenhum conteúdo disponível neste mês."}{pendingOnly && <button className="text-button" onClick={() => setPendingOnly(false)}>Ver feed completo</button>}</div>}
             <div className="feed-footer"><span><span className="footer-line" /> CONSTRUINDO UMA PRESENÇA COM PROPÓSITO</span><button onClick={() => navigate("stories")}>Ver Stories <ArrowRight size={17} /></button></div>
           </>}
@@ -665,7 +731,7 @@ export default function Portal({
         </main>
       </div>
 
-      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; setWorkspace(prev => ({ ...prev, nextPostNumber: Math.max(prev.nextPostNumber ?? 1, ...prev.contents.map(item => (item.postNumber ?? 0) + 1)), contents: prev.contents.filter(item => item.id !== toDeleteId) })); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note) => actionOnContent(selected.id, status, action, note)} />}
+      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; const isStory = selected.format === "story"; setWorkspace(prev => { const remaining = prev.contents.filter(item => item.id !== toDeleteId); if (isStory) return { ...prev, contents: remaining }; const feed = remaining.filter(item => item.format !== "story"); const stories = remaining.filter(item => item.format === "story"); const renumberedFeed = feed.slice(0, 8).map((item, idx) => ({ ...item, postNumber: idx + 1 })); fetch("/api/contents/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: renumberedFeed.map(item => ({ id: item.id, postNumber: item.postNumber })) }) }).catch(console.error); return { ...prev, contents: [...renumberedFeed, ...stories] }; }); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note) => actionOnContent(selected.id, status, action, note)} />}
 
       {logoEditorOpen && <div className="logo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLogo(); }}>
         <section className="logo-modal" role="dialog" aria-modal="true" aria-labelledby="logo-modal-title">
@@ -694,7 +760,7 @@ export default function Portal({
             <input id="logo-scale" type="range" min="50" max="220" step="5" value={logoDraft.scale} onChange={(event) => setLogoDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))} />
             <label className="logo-border-choice"><input type="checkbox" checked={logoDraft.border} onChange={(event) => setLogoDraft((draft) => ({ ...draft, border: event.target.checked }))} /> Mostrar aro dourado</label>
             <button type="button" className="text-button danger-button" onClick={() => { if (window.confirm("Remover a logo deste cliente?")) { setWorkspace(prev => ({ ...prev, logoFileId: undefined })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_url: null }) }).catch(console.error); } }}>Remover logo</button><button type="button" className="text-button" onClick={() => setLogoDraft({ scale: 100, x: 0, y: 0, border: false })}>Restaurar enquadramento</button>
-            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={() => { setWorkspace((prev) => ({ ...prev, logoScale: logoDraft.scale, logoOffsetX: logoDraft.x, logoOffsetY: logoDraft.y, logoBorder: logoDraft.border })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_scale: logoDraft.scale, logo_offset_x: logoDraft.x, logo_offset_y: logoDraft.y, logo_border: logoDraft.border }) }).catch(console.error); }}>Aplicar enquadramento</button></div>
+            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={() => { const roundedScale = Math.round(logoDraft.scale); const roundedX = Math.round(logoDraft.x); const roundedY = Math.round(logoDraft.y); setWorkspace((prev) => ({ ...prev, logoScale: roundedScale, logoOffsetX: roundedX, logoOffsetY: roundedY, logoBorder: logoDraft.border })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_scale: roundedScale, logo_offset_x: roundedX, logo_offset_y: roundedY, logo_border: logoDraft.border }) }).catch(console.error); }}>Aplicar enquadramento</button></div>
           </div>}
         </section>
       </div>}

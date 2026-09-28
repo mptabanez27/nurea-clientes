@@ -154,9 +154,25 @@ export async function updateClientLogoSettings(
   }
 ) {
   const admin = getSupabaseAdmin();
+  const sanitized: Record<string, any> = {};
+
+  if (updates.logo_url !== undefined) sanitized.logo_url = updates.logo_url;
+  if (updates.logo_scale !== undefined && updates.logo_scale !== null) {
+    sanitized.logo_scale = Math.round(Number(updates.logo_scale));
+  }
+  if (updates.logo_offset_x !== undefined && updates.logo_offset_x !== null) {
+    sanitized.logo_offset_x = Math.round(Number(updates.logo_offset_x));
+  }
+  if (updates.logo_offset_y !== undefined && updates.logo_offset_y !== null) {
+    sanitized.logo_offset_y = Math.round(Number(updates.logo_offset_y));
+  }
+  if (updates.logo_border !== undefined && updates.logo_border !== null) {
+    sanitized.logo_border = Boolean(updates.logo_border);
+  }
+
   const { error } = await admin
     .from("clients")
-    .update(updates)
+    .update(sanitized)
     .eq("id", clientId);
 
   if (error) {

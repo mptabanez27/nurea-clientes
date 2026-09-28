@@ -26,3 +26,15 @@ img{max-width:100%}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 .intro-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.stories-shortcut{display:inline-flex;align-items:center;gap:8px;border:1px solid #ded8cb;background:#fff;padding:8px 11px;border-radius:30px;color:var(--forest);font-size:10px;font-weight:700;white-space:nowrap;transition:border-color .18s,transform .18s}.stories-shortcut:hover{border-color:var(--gold);transform:translateY(-1px)}.stories-shortcut .story-nav-icon{width:14px;height:14px}.stories-shortcut .story-nav-icon:after{inset:3px}.stories-shortcut svg{width:12px}
 @media(max-width:760px){.intro-row .eyebrow{max-width:240px;line-height:1.6;font-size:8px}.stories-shortcut{padding:7px 9px;font-size:9px;gap:5px}.stories-shortcut svg{display:none}}
+
+/* Feed Card Drag & Drop and Framing */
+.feed-card{position:relative;display:flex;flex-direction:column;transition:transform .2s cubic-bezier(.2,.8,.2,1),opacity .2s;user-select:none}
+.feed-card-draggable{cursor:grab}
+.feed-card-draggable:active{cursor:grabbing}
+.feed-card-dragging{opacity:.35;transform:scale(.96)}
+.feed-card-dragover{outline:2px dashed #c7a56b;outline-offset:4px;border-radius:6px;transform:scale(1.02)}
+.feed-card-meta{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding:0 2px;font-size:10px}
+.feed-post-number{font-weight:800;letter-spacing:.08em;color:var(--forest,#0b1e18);display:flex;align-items:center;gap:4px}
+.feed-drag-handle{display:inline-flex;align-items:center;color:#8c998e;margin-right:3px;cursor:grab;transition:color .18s}
+.feed-card:hover .feed-drag-handle{color:#c7a56b}
+
