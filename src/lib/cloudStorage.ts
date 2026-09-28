@@ -1,24 +1,21 @@
-import { supabase } from "./supabase";
-
 export async function uploadFileToStorage(
   file: File | Blob,
   path: string
 ): Promise<string> {
-  const cleanPath = path.replace(/^\/+/, "");
-  const { data, error } = await supabase.storage
-    .from("midias")
-    .upload(cleanPath, file, {
-      cacheControl: "3600",
-      upsert: true,
-    });
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("path", path);
 
-  if (error) {
-    throw new Error(`Erro ao enviar arquivo para o Storage: ${error.message}`);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Falha ao enviar arquivo para o servidor");
   }
 
-  const { data: publicData } = supabase.storage
-    .from("midias")
-    .getPublicUrl(data.path);
-
-  return publicData.publicUrl;
+  const data = await res.json();
+  return data.url;
 }

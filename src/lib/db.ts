@@ -146,7 +146,7 @@ export async function createClient(name: string): Promise<ClientRecord | null> {
 export async function updateClientLogoSettings(
   clientId: string,
   updates: {
-    logo_url?: string;
+    logo_url?: string | null;
     logo_scale?: number;
     logo_offset_x?: number;
     logo_offset_y?: number;
@@ -170,8 +170,10 @@ export async function loadWorkspaceData(
   clientId: string,
   targetMonthKey = "2026-09"
 ): Promise<Workspace | null> {
+  const admin = getSupabaseAdmin();
+
   // 1. Buscar cliente
-  const { data: client, error: clientErr } = await supabase
+  const { data: client, error: clientErr } = await admin
     .from("clients")
     .select("*")
     .eq("id", clientId)
@@ -180,7 +182,7 @@ export async function loadWorkspaceData(
   if (clientErr || !client) return null;
 
   // 2. Buscar ciclos mensais
-  const { data: cycles } = await supabase
+  const { data: cycles } = await admin
     .from("month_cycles")
     .select("*")
     .eq("client_id", clientId);
@@ -211,7 +213,7 @@ export async function loadWorkspaceData(
   }
 
   // 3. Buscar posts/stories do mês em foco
-  const { data: contentsData } = await supabase
+  const { data: contentsData } = await admin
     .from("contents")
     .select(`
       *,
@@ -284,57 +286,42 @@ export async function loadWorkspaceData(
 export async function saveContentRecord(
   clientId: string,
   monthKey: string,
-  content: Partial<Content> & { title: string; format: ContentFormat; date: string }
+  content: Partial<Content> & { title?: string; format?: ContentFormat; date?: string }
 ): Promise<string> {
   const admin = getSupabaseAdmin();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(content.id || "");
+  const id = isUuid ? (content.id as string) : crypto.randomUUID();
 
-  if (content.id && !content.id.startsWith("new-") && !content.id.startsWith("post-")) {
-    // Atualizar existente
-    const { error } = await admin
-      .from("contents")
-      .update({
-        title: content.title,
-        category: content.category,
-        format: content.format,
-        date: content.date,
-        status: content.status,
-        caption: content.caption,
-        cta: content.cta,
-        version: content.version,
-        published_url: content.publishedUrl,
-        shared_to_story: content.sharedToStory,
-        media_urls: content.media || [],
-      })
-      .eq("id", content.id);
+  const record: Record<string, any> = {
+    id,
+    client_id: clientId,
+    month_key: monthKey,
+  };
 
-    if (error) throw error;
-    return content.id;
-  } else {
-    // Inserir novo
-    const { data, error } = await admin
-      .from("contents")
-      .insert({
-        client_id: clientId,
-        month_key: monthKey,
-        post_number: content.postNumber,
-        title: content.title,
-        category: content.category || "Geral",
-        format: content.format,
-        date: content.date,
-        status: content.status || "producao",
-        caption: content.caption || "",
-        cta: content.cta || "",
-        version: content.version || 1,
-        published_url: content.publishedUrl,
-        shared_to_story: content.sharedToStory || false,
-        media_urls: content.media || [],
-      })
-      .select("id")
-      .single();
+  if (content.title !== undefined) record.title = content.title;
+  if (content.category !== undefined) record.category = content.category;
+  if (content.format !== undefined) record.format = content.format;
+  if (content.date !== undefined) record.date = content.date;
+  if (content.status !== undefined) record.status = content.status;
+  if (content.caption !== undefined) record.caption = content.caption;
+  if (content.cta !== undefined) record.cta = content.cta;
+  if (content.version !== undefined) record.version = content.version;
+  if (content.publishedUrl !== undefined) record.published_url = content.publishedUrl;
+  if (content.sharedToStory !== undefined) record.shared_to_story = content.sharedToStory;
+  if (content.media !== undefined) record.media_urls = content.media;
+  if (content.postNumber !== undefined) record.post_number = content.postNumber;
 
-    if (error) throw error;
-    return data.id;
+  const { data, error } = await admin
+    .from("contents")
+    .upsert(record, { onConflict: "id" })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Erro no upsert de contents:", error);
+    throw error;
   }
+  return data.id;
 }
 
 // Registrar atividade (aprovação, ajuste, comentário)

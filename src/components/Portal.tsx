@@ -47,7 +47,14 @@ const storageKey = "nurea-clientes-demo-v2";
 const shortStatus: Record<ContentStatus, string> = { producao: "Em preparação", aguardando: "Aguardando", ajuste: "Em ajuste", aprovado: "Aprovado", agendado: "Agendado", publicado: "Publicado" };
 
 function uid() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 function StatusBadge({ status }: { status: ContentStatus | Workspace["plan"]["status"] }) {
@@ -144,9 +151,13 @@ export default function Portal({
     const name = window.prompt("Nome do novo cliente:");
     if (!name || !name.trim()) return;
     try {
-      const { createClient } = await import("@/lib/db");
-      const created = await createClient(name.trim());
-      if (created) {
+      const res = await fetch("/api/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const created = await res.json();
+      if (res.ok && created?.id) {
         const newEntry = { id: created.id, name: created.name, access_token: created.access_token };
         setClientsList((prev) => [...prev, newEntry]);
         const newWorkspace: Workspace = {
@@ -224,19 +235,24 @@ export default function Portal({
     let active = true;
     async function syncCloud() {
       try {
-        const { loadWorkspaceData, getAllClients } = await import("@/lib/db");
         if (!availableClients && !fixedClient) {
-          const all = await getAllClients();
-          if (active && all && all.length > 0) {
-            setClientsList(all.map((c) => ({ id: c.id, name: c.name, access_token: c.access_token })));
+          const resClients = await fetch("/api/clients");
+          if (resClients.ok) {
+            const all = await resClients.json();
+            if (active && all && all.length > 0) {
+              setClientsList(all.map((c: any) => ({ id: c.id, name: c.name, access_token: c.access_token })));
+            }
           }
         }
-        const cloudData = await loadWorkspaceData(clientId, activeMonthKey);
-        if (active && cloudData) {
-          setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
+        const resWs = await fetch(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
+        if (resWs.ok) {
+          const cloudData = await resWs.json();
+          if (active && cloudData) {
+            setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
+          }
         }
       } catch (err) {
-        console.warn("Sync com Supabase falhou, usando dados locais:", err);
+        console.warn("Sync com backend falhou, usando dados locais:", err);
       }
     }
     syncCloud();
@@ -251,18 +267,7 @@ export default function Portal({
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        const parsed = JSON.parse(saved) as { clientId?: string; role?: Role; workspaces?: Record<string, Workspace> };
-        if (parsed?.workspaces) {
-          const restored = { ...initialWorkspaces };
-          for (const client of demoClients) {
-            const candidate = parsed.workspaces[client.id];
-            if (candidate?.plan && Array.isArray(candidate.contents)) {
-              const months = candidate.months && Object.fromEntries(Object.entries(candidate.months).map(([key, cycle]) => [key, { ...cycle, contents: ensurePostNumbers(cycle.contents) }]));
-              restored[client.id] = { ...candidate, months, contents: ensurePostNumbers(candidate.contents), clientName: client.name };
-            }
-          }
-          setWorkspaces((prev) => ({ ...restored, ...prev }));
-        }
+        const parsed = JSON.parse(saved) as { clientId?: string; role?: Role };
         if (!initialClientId && parsed?.clientId && (demoClients.some((client) => client.id === parsed.clientId) || clientsList.some(c => c.id === parsed.clientId))) {
           setClientId(parsed.clientId);
         }
@@ -271,10 +276,10 @@ export default function Portal({
         }
       }
     } catch {
-      // Corrupt or unavailable local demo state is safely ignored.
+      // Corrupt or unavailable local state is safely ignored.
     }
     setHydrated(true);
-  }, [fixedRole, initialClientId, initialRole]);
+  }, [fixedRole, initialClientId, initialRole, clientsList]);
 
   useEffect(() => {
     if (!hydrated || fixedRole) return;
@@ -327,23 +332,29 @@ export default function Portal({
     if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { setLogoError("Escolha uma imagem de até 5 MB."); return; }
     setLogoError("");
     try {
-      let logoUrl: string | undefined;
-      try {
-        const { uploadFileToStorage } = await import("@/lib/cloudStorage");
-        logoUrl = await uploadFileToStorage(file, `logos/${clientId}-${Date.now()}-${file.name}`);
-      } catch {}
-      const id = logoUrl || uid();
-      if (!logoUrl) {
-        await saveLocalFile(id, file);
-      }
-      setWorkspace((prev) => ({ ...prev, logoFileId: id, logoScale: 100, logoOffsetX: 0, logoOffsetY: 0, logoBorder: false }));
+      const { uploadFileToStorage } = await import("@/lib/cloudStorage");
+      const logoUrl = await uploadFileToStorage(file, `logos/${clientId}-${Date.now()}-${file.name}`);
+
+      setWorkspace((prev) => ({ ...prev, logoFileId: logoUrl, logoScale: 100, logoOffsetX: 0, logoOffsetY: 0, logoBorder: false }));
       setLogoDraft({ scale: 100, x: 0, y: 0, border: false });
       setLogoEditorOpen(true);
-      if (logoUrl) {
-        const { updateClientLogoSettings } = await import("@/lib/db");
-        await updateClientLogoSettings(clientId, { logo_url: logoUrl, logo_scale: 100, logo_offset_x: 0, logo_offset_y: 0, logo_border: false });
-      }
-    } catch { setLogoError("Não foi possível salvar a logo."); }
+
+      await fetch("/api/clients/logo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          logo_url: logoUrl,
+          logo_scale: 100,
+          logo_offset_x: 0,
+          logo_offset_y: 0,
+          logo_border: false,
+        }),
+      });
+    } catch (err) {
+      console.error("Erro ao fazer upload da logo:", err);
+      setLogoError("Não foi possível salvar a logo.");
+    }
   }
 
   const feedContents = workspace.contents.filter((content) => content.format !== "story");
@@ -392,8 +403,10 @@ export default function Portal({
         return updatedItem;
       });
       if (updatedItem) {
-        import("@/lib/db").then(({ saveContentRecord }) => {
-          saveContentRecord(clientId, activeMonthKey, updatedItem!);
+        fetch("/api/contents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, monthKey: activeMonthKey, content: updatedItem }),
         }).catch(console.error);
       }
       return { ...prev, contents: nextContents };
@@ -406,9 +419,19 @@ export default function Portal({
       status,
       activity: [{ id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: content.version }, ...content.activity],
     }));
-    import("@/lib/db").then(({ saveContentRecord, addActivityRecord }) => {
-      saveContentRecord(clientId, activeMonthKey, { id, status } as any).catch(console.error);
-      addActivityRecord(id, role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, selected?.version || 1).catch(console.error);
+    fetch("/api/contents/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contentId: id,
+        clientId,
+        monthKey: activeMonthKey,
+        status,
+        action,
+        note,
+        author: role === "cliente" ? "Cliente" : "Equipe Nurea",
+        version: selected?.version || 1,
+      }),
     }).catch(console.error);
   }
 
@@ -466,8 +489,10 @@ export default function Portal({
     setView(newFormat === "story" ? "stories" : "feed");
     requestAnimationFrame(() => openDetail(content.id));
 
-    import("@/lib/db").then(({ saveContentRecord }) => {
-      saveContentRecord(clientId, activeMonthKey, content);
+    fetch("/api/contents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, monthKey: activeMonthKey, content }),
     }).catch(console.error);
   }
 
@@ -479,8 +504,17 @@ export default function Portal({
     });
     setPlanAdjustOpen(false);
     setPlanAdjustText("");
-    import("@/lib/db").then(({ updatePlanStatusRecord }) => {
-      updatePlanStatusRecord(clientId, activeMonthKey, status, action, role === "cliente" ? "Cliente" : "Equipe Nurea", note);
+    fetch("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        monthKey: activeMonthKey,
+        status,
+        action,
+        author: role === "cliente" ? "Cliente" : "Equipe Nurea",
+        note,
+      }),
     }).catch(console.error);
   }
 
@@ -626,12 +660,12 @@ export default function Portal({
             <div className="eyebrow">DIREÇÃO DO MÊS <span>·</span> {workspace.month.toUpperCase()}</div>
             <div className="page-heading"><div><h1>Planejamento <em>editorial.</em></h1><p>O documento que orienta o mês, sempre à mão para consulta.</p></div></div>
             <div className="plan-toolbar"><div><FileText size={20} /><div><strong>Planejamento editorial · {workspace.month}</strong><small>{`${workspace.plan.file?.name ?? (activeMonthKey === "2026-09" && !workspace.plan.exampleRemoved ? "Exemplo ilustrativo" : "Sem arquivo")} · versão ${workspace.plan.version}`}</small></div></div><StatusBadge status={workspace.plan.status} /></div>
-            <div className="plan-layout"><PlanDocument key={`${clientId}-${activeMonthKey}`} plan={workspace.plan} monthKey={activeMonthKey} team={role === "equipe"} onChange={update => setWorkspace(prev => (prev.monthKey ?? "2026-09") === activeMonthKey ? { ...prev, plan: update(prev.plan) } : prev)} /><aside className="plan-side"><div className="plan-side-card"><span className="section-kicker">STATUS DO DOCUMENTO</span><h3>{planStatusLabel[workspace.plan.status]}</h3><p>{workspace.plan.status === "rascunho" ? "A equipe ainda não enviou o planejamento deste mês." : "Confira o documento antes de aprovar. A aprovação do planejamento não aprova os posts individualmente."}</p>{role === "cliente" && workspace.plan.status === "aguardando" && <div className="plan-actions"><button className="primary-button" onClick={() => updatePlan("aprovado", "Planejamento aprovado")}><Check size={17} /> Aprovar planejamento</button><button className="outline-button" onClick={() => setPlanAdjustOpen(true)}><MessageCircle size={17} /> Pedir ajuste</button></div>}{role === "equipe" && (workspace.plan.status === "ajuste" || workspace.plan.status === "rascunho") && !!(workspace.plan.file || (activeMonthKey === "2026-09" && !workspace.plan.exampleRemoved)) && <button className="primary-button" onClick={() => updatePlan("aguardando", "Planejamento reenviado para aprovação")}>Enviar para aprovação</button>}{role === "equipe" && workspace.plan.status === "aprovado" && <p className="plan-side-hint"><CheckCircle2 size={16} /> Planejamento aprovado. Uma nova versão deverá ter aprovação própria.</p>}</div><div className="plan-side-card"><span className="section-kicker">HISTÓRICO</span>{workspace.plan.activity.length ? workspace.plan.activity.map((activity) => <div className="activity-item" key={activity.id}><span className="activity-mark" /><div><strong>{activity.action}</strong><small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>{activity.note && <p>{activity.note}</p>}</div></div>) : <p>Nenhuma ação registrada.</p>}</div></aside></div>
+            <div className="plan-layout"><PlanDocument key={`${clientId}-${activeMonthKey}`} plan={workspace.plan} monthKey={activeMonthKey} team={role === "equipe"} onChange={update => { setWorkspace(prev => { if ((prev.monthKey ?? "2026-09") !== activeMonthKey) return prev; const nextPlan = update(prev.plan); fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, monthKey: activeMonthKey, status: nextPlan.status, action: nextPlan.activity?.[0]?.action || "Planejamento atualizado", author: role === "cliente" ? "Cliente" : "Equipe Nurea", fileUrl: nextPlan.file?.url, fileName: nextPlan.file?.name }) }).catch(console.error); return { ...prev, plan: nextPlan }; }); }} /><aside className="plan-side"><div className="plan-side-card"><span className="section-kicker">STATUS DO DOCUMENTO</span><h3>{planStatusLabel[workspace.plan.status]}</h3><p>{workspace.plan.status === "rascunho" ? "A equipe ainda não enviou o planejamento deste mês." : "Confira o documento antes de aprovar. A aprovação do planejamento não aprova os posts individualmente."}</p>{role === "cliente" && workspace.plan.status === "aguardando" && <div className="plan-actions"><button className="primary-button" onClick={() => updatePlan("aprovado", "Planejamento aprovado")}><Check size={17} /> Aprovar planejamento</button><button className="outline-button" onClick={() => setPlanAdjustOpen(true)}><MessageCircle size={17} /> Pedir ajuste</button></div>}{role === "equipe" && (workspace.plan.status === "ajuste" || workspace.plan.status === "rascunho") && !!(workspace.plan.file || (activeMonthKey === "2026-09" && !workspace.plan.exampleRemoved)) && <button className="primary-button" onClick={() => updatePlan("aguardando", "Planejamento reenviado para aprovação")}>Enviar para aprovação</button>}{role === "equipe" && workspace.plan.status === "aprovado" && <p className="plan-side-hint"><CheckCircle2 size={16} /> Planejamento aprovado. Uma nova versão deverá ter aprovação própria.</p>}</div><div className="plan-side-card"><span className="section-kicker">HISTÓRICO</span>{workspace.plan.activity.length ? workspace.plan.activity.map((activity) => <div className="activity-item" key={activity.id}><span className="activity-mark" /><div><strong>{activity.action}</strong><small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>{activity.note && <p>{activity.note}</p>}</div></div>) : <p>Nenhuma ação registrada.</p>}</div></aside></div>
           </>}
         </main>
       </div>
 
-      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={() => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; setWorkspace(prev => ({ ...prev, nextPostNumber: Math.max(prev.nextPostNumber ?? 1, ...prev.contents.map(item => (item.postNumber ?? 0) + 1)), contents: prev.contents.filter(item => item.id !== selected.id) })); closeDetail(); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note) => actionOnContent(selected.id, status, action, note)} />}
+      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; setWorkspace(prev => ({ ...prev, nextPostNumber: Math.max(prev.nextPostNumber ?? 1, ...prev.contents.map(item => (item.postNumber ?? 0) + 1)), contents: prev.contents.filter(item => item.id !== toDeleteId) })); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note) => actionOnContent(selected.id, status, action, note)} />}
 
       {logoEditorOpen && <div className="logo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLogo(); }}>
         <section className="logo-modal" role="dialog" aria-modal="true" aria-labelledby="logo-modal-title">
@@ -659,8 +693,8 @@ export default function Portal({
             <label htmlFor="logo-scale">Zoom <strong>{logoDraft.scale}%</strong></label>
             <input id="logo-scale" type="range" min="50" max="220" step="5" value={logoDraft.scale} onChange={(event) => setLogoDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))} />
             <label className="logo-border-choice"><input type="checkbox" checked={logoDraft.border} onChange={(event) => setLogoDraft((draft) => ({ ...draft, border: event.target.checked }))} /> Mostrar aro dourado</label>
-            <button type="button" className="text-button danger-button" onClick={() => { if (window.confirm("Remover a logo deste cliente?")) { setWorkspace(prev => ({ ...prev, logoFileId: undefined })); closeLogo(); } }}>Remover logo</button><button type="button" className="text-button" onClick={() => setLogoDraft({ scale: 100, x: 0, y: 0, border: false })}>Restaurar enquadramento</button>
-            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={() => { setWorkspace((prev) => ({ ...prev, logoScale: logoDraft.scale, logoOffsetX: logoDraft.x, logoOffsetY: logoDraft.y, logoBorder: logoDraft.border })); closeLogo(); }}>Aplicar enquadramento</button></div>
+            <button type="button" className="text-button danger-button" onClick={() => { if (window.confirm("Remover a logo deste cliente?")) { setWorkspace(prev => ({ ...prev, logoFileId: undefined })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_url: null }) }).catch(console.error); } }}>Remover logo</button><button type="button" className="text-button" onClick={() => setLogoDraft({ scale: 100, x: 0, y: 0, border: false })}>Restaurar enquadramento</button>
+            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={() => { setWorkspace((prev) => ({ ...prev, logoScale: logoDraft.scale, logoOffsetX: logoDraft.x, logoOffsetY: logoDraft.y, logoBorder: logoDraft.border })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_scale: logoDraft.scale, logo_offset_x: logoDraft.x, logo_offset_y: logoDraft.y, logo_border: logoDraft.border }) }).catch(console.error); }}>Aplicar enquadramento</button></div>
           </div>}
         </section>
       </div>}
