@@ -38,3 +38,11 @@
 - Sem integração com WhatsApp, Instagram, agente ou calendário sazonal automatizado.
 - Sem dashboard consolidado de todos os clientes: a equipe troca de espaço pelo seletor lateral, mas vê apenas um de cada vez.
 - Não publicar, nem adicionar material real de clientes, até concluir o P0.
+
+## 28/09/2026 — fluxo de revisão e gestão de arquivos
+
+- Feed priorizado, filtro de pendências, resumo recolhido e número fixo no detalhe/lista.
+- Aprovação fixa com retorno visual na grade; comentário sem mudar status e ajuste com texto obrigatório.
+- Edição de posts publicados liberada, arquivos removíveis/reordenáveis, capa para mídia principal, exclusão de post e remoção de logo.
+- Planejamento local com upload, substituição, remoção persistente, preview imagem/PDF, download e envio para aprovação.
+- Verificação: TypeScript e build de produção passaram. Navegador: aprovação altera card/contagem; comentário mantém aprovado; ajuste registra histórico e permite reenvio; dado operacional pode ser salvo/desmarcado em post publicado sem invalidar status; upload de imagem de planejamento, remoção e estado vazio após recarga confirmados. Desktop e viewport mobile 390×844 inspecionados. PDF e codecs de vídeo não foram exercitados neste ciclo.

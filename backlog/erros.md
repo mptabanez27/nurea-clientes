@@ -16,3 +16,6 @@ Ao identificar um problema, acrescente data, ambiente, passos para reproduzir, r
 ## Resolvido em 28/09/2026
 
 - **Card do feed sem número de post:** no protótipo local, a prévia de um registro salvo sem `postNumber` exibia `POST —` (referência visual enviada em 28/09/2026). Esperado: toda publicação do feed ter número fixo. A grade agora preenche números ausentes, ordena pelo número e apresenta POST em destaque; novos registros recebem o próximo número. Impacto: identificação inconsistente das publicações para conversa com o cliente. Estado: corrigido no código; não foi feito teste automatizado.
+
+- **Planejamento sem gestão do arquivo (28/09/2026, demo local):** abrir Planejamento como Equipe exibia apenas download do exemplo, sem upload/remover. Corrigido com gestão de imagem/PDF por ciclo; remoção do arquivo de teste confirmada após recarga.
+- **Edição bloqueada após publicação (28/09/2026):** abrir um post publicado como Equipe desabilitava edição e ocultava ações de anexo. Corrigido: edição disponível em todos os status; mudanças materiais reiniciam revisão.

@@ -10,8 +10,10 @@
 
 ## P1 — produto
 
-- [ ] Upload, versionamento e aprovação de um planejamento próprio por cliente/mês; hoje novos meses exibem apenas o estado “ainda não adicionado”.
-- [ ] Permitir escolher manualmente um frame do vídeo como capa; o upload de imagem de capa já existe para anexos de vídeo, mas a miniatura automática pode falhar com alguns codecs.
+- [x] Planejamento local por cliente/mês: upload imagem/PDF, substituição, remoção, versão, histórico e aprovação.
+- [ ] Recuperar versões anteriores e implementar lixeira/limpeza de blobs sem referência (posts, mídias, logos e planejamentos removidos/substituídos).
+- [ ] Levar os fluxos locais de comentário, ajuste e aprovação ao backend com identidade autenticada.
+- [ ] Permitir escolher manualmente um frame do vídeo como capa; o upload de imagem de capa já existe para mídia principal e anexos de vídeo, mas a miniatura automática pode falhar com alguns codecs.
 - [ ] Painel da equipe com todos os clientes e pendências.
 - [ ] Gerador assistido do calendário sazonal com fontes e revisão.
 - [ ] Integração de edição seletiva por agente, com prévia e confirmação.

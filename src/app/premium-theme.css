@@ -307,3 +307,100 @@ body {
   .feed-card .feed-tile .media-preview > video,
   .story-card { transform: none !important; transition-duration: .01ms; }
 }
+
+/* The feed is the entry point; review actions stay within reach. */
+.client-cover { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; }
+.client-logo { width: 54px; height: 54px; }
+.client-logo span { font-size: 20px; }
+.client-cover-brand .client-cover-identity { padding-right: 0; }
+.client-cover-brand .client-cover-identity strong { font-size: 20px; }
+.client-cover-brand .client-cover-identity span, .client-cover-month > span { display: none; }
+.client-cover-month { padding: 0; border: 0; margin: 0; }
+.client-cover-month h1 { display: none; }
+.client-cover-tools { position: static; }
+.month-focus-actions { flex-wrap: wrap; }
+.feed-summary { margin-top: 12px; color: #52645b; font-size: 12px; }
+.feed-summary summary { cursor: pointer; padding: 9px 0; width: fit-content; }
+.feed-summary .publication-cockpit { margin-top: 8px; }
+.feed-toolbar { margin-top: 10px; }
+.feed-toolbar > div { width: auto; }
+.pending-filter { border: 1px solid #d4dfd8; border-radius: 24px; padding: 10px 15px; background: rgba(255,255,255,.78); color: #214e3d; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .2s, box-shadow .2s; }
+.pending-filter.active { background: #173c2e; color: #fff; }
+.section-heading { margin-top: 20px; }
+.section-heading p { max-width: 58ch; font-size: 13px; line-height: 1.6; }
+.feed-state-aprovado { outline: 2px solid #39745b; outline-offset: -1px; }
+.feed-state-aprovado .feed-card-meta { background: #edf5ef; }
+.feed-state-aprovado .tile-status { background: #173c2e; color: #fff; box-shadow: 0 3px 16px #0b1e1833; }
+.feed-card .tile-status { display: inline-flex; align-items: center; }
+.content-detail-body { min-height: 0; }
+.detail-quick-links { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 14px; }
+.detail-quick-links button { border: 1px solid #d6dfd8; background: #ffffffc9; border-radius: 20px; color: #28543f; min-height: 36px; padding: 7px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.detail-section { scroll-margin-top: 14px; }
+.review-action-bar { flex: none; z-index: 2; padding: 13px 24px max(13px, env(safe-area-inset-bottom)); border-top: 1px solid #fff; background: rgba(249,250,247,.91); backdrop-filter: blur(24px) saturate(130%); -webkit-backdrop-filter: blur(24px) saturate(130%); box-shadow: 0 -8px 30px #0b1e1810; }
+.review-feedback { color: #28543f; font-size: 12px; margin-bottom: 9px; line-height: 1.4; }
+.review-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-buttons button { min-height: 44px; justify-content: center; }
+.review-buttons .approve-button { flex: 1; background: #173c2e; color: #fff; box-shadow: 0 4px 12px #12332424; font-size: 14px; }
+.review-buttons .approve-button:hover { background: #24553f; }
+.content-detail-title { display: block; margin-bottom: 18px; }
+.content-detail-title .status-badge { margin-top: 12px; }
+.content-detail-side { background: rgba(237,241,236,.65); }
+.content-detail .detail-inline-edit { color: #28543f; min-height: 36px; }
+.comment-form { display: grid; gap: 10px; margin: 18px 0; }
+.comment-form label { font-size: 14px; font-weight: 700; }
+.comment-form textarea { resize: vertical; min-height: 90px; padding: 12px; width: 100%; border: 1px solid #cbd5ce; border-radius: 9px; background: #fff; color: #0b1e18; font: inherit; font-size: 14px; }
+.comment-form p { font-size: 12px; margin: 0; color: #52645b; }
+.comment-form > div { display: flex; gap: 10px; justify-content: flex-end; }
+.danger-button { color: #923c35 !important; }
+.media-edit-list { display: grid; gap: 8px; font-size: 12px; }
+.media-edit-list > div { display: flex; align-items: center; gap: 8px; }
+.media-edit-list span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.content-edit .inline-checkbox { display: flex; align-items: center; gap: 8px; }
+.content-edit .inline-checkbox input { width: 18px; height: 18px; }
+.document-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.document-actions button, .document-actions a { min-height: 44px; font-size: 12px; }
+.plan-document { min-width: 0; }
+.plan-pdf { display: block; width: 100%; height: 72vh; border: 0; }
+.plan-image-frame > .outline-button { margin: 12px; }
+.plan-toolbar small { overflow-wrap: anywhere; }
+@media (min-width: 900px) {
+  .content-detail-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; }
+  .content-detail-date { grid-column: 1 / -1; margin: 18px 24px; }
+  .content-detail-cover { margin: 0 0 24px 24px; border-radius: 12px; height: 440px; }
+  .content-detail-art { height: 100%; width: 330px; max-width: 100%; }
+  .content-detail-art.is-story { width: 247px; }
+  .content-detail-columns { display: contents; }
+  .content-detail-main { padding: 0 24px 24px; }
+  .content-detail-side { grid-column: 1 / -1; padding: 22px 24px; border: 0; border-top: 1px solid #dce3dd; }
+  .content-detail-side .content-detail-actions { max-width: 600px; }
+  .content-detail-nav { grid-column: 1 / -1; }
+}
+@media (max-width: 760px) {
+  .content-area { padding-top: 16px; }
+  .client-cover { padding: 14px; gap: 12px; }
+  .client-cover-brand { gap: 10px; }
+  .client-cover-brand .client-cover-identity strong { font-size: 17px; }
+  .client-logo { width: 44px; height: 44px; }
+  .client-cover-month { width: 100%; }
+  .month-focus-actions { width: 100%; }
+  .month-focus-actions select { flex: 1; min-height: 40px; }
+  .client-cover-tools { position: absolute; top: 16px; right: 12px; }
+  .client-cover:has(.client-cover-tools) .client-cover-identity { padding-right: 24px; }
+  .feed-toolbar { gap: 8px; }
+  .feed-toolbar .stories-shortcut { font-size: 11px; }
+  .pending-filter { font-size: 11px; padding: 10px; }
+  .section-heading { margin-top: 17px; }
+  .section-heading p { font-size: 12px; }
+  .review-action-bar { padding: 10px 14px max(12px, env(safe-area-inset-bottom)); }
+  .review-feedback { font-size: 11px; }
+  .review-buttons { gap: 6px; }
+  .review-buttons .approve-button { flex-basis: 100%; }
+  .review-buttons .outline-button { flex: 1; padding: 10px; font-size: 12px; }
+  .content-detail-date { margin: 12px 14px; padding: 10px; }
+  .content-detail-date strong { font-size: 13px; }
+  .content-detail-cover { height: min(320px, 85vw); }
+  .content-detail-art { width: min(240px, 63.75vw); }
+  .content-detail-main { padding: 20px 16px; }
+  .content-detail-side { padding: 20px 16px; }
+  .caption-block { font-size: 14px; }
+}

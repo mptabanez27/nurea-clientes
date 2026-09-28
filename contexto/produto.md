@@ -32,7 +32,7 @@ Um portal para a agência Nurea apresentar o planejamento mensal, mostrar os con
 - Um vídeo anexado pode ser selecionado na lista de anexos e reproduzido com controles no próprio detalhe. A equipe pode enviar uma imagem de capa específica para esse anexo; ela aparece antes do play e, se o vídeo for a mídia visual usada pelo card, também no feed. Sem capa personalizada, usa-se um frame extraído quando o navegador o decodifica. Escolher um frame manualmente no vídeo continua sendo melhoria futura.
 - A tela principal tem cabeçalho claro e compacto com nome, logo circular e mês em foco. A logo pode ser ampliada por qualquer perfil; a equipe pode trocá-la e ajustar zoom e posição dentro do círculo, com aro opcional. Os ajustes são específicos de cada cliente.
 - Cada cliente pode ter vários meses independentes. A equipe cria períodos, alterna o mês em foco e adiciona peças ao período escolhido; cliente pode consultar os meses já existentes. A data da peça pode cruzar o limite do mês editorial (por exemplo, uma peça de início de outubro prevista no ciclo de setembro).
-- Logo abaixo da capa, um mini painel mostra apenas quantidades por status das publicações do feed; sem repetir o total ou texto descritivo. A visão da equipe inclui “Em preparação”, oculto na visão do cliente.
+- O feed é prioritário: cabeçalho compacto, resumo de status recolhido em “Andamento do mês” e filtro de pendências. A grade completa mantém a sequência fixa dos posts; o filtro não renumera as peças. A visão da equipe inclui “Em preparação”, oculto na visão do cliente.
 - Planejamento é secundário na navegação. Sua página mostra o PDF/arte vertical, status, versão, aprovação e download.
 - Pedido de ajuste: campo livre obrigatório; indicação da parte a alterar pode ser opcional. Não transformar em formulário complexo.
 - Equipe deve poder operar vários ajustes por prompt no futuro, com prévia antes de aplicar, alteração apenas dos registros selecionados e histórico. Essa integração ainda não existe.
@@ -46,3 +46,12 @@ Preparar o calendário para mês/ano correto, com dias da semana calculados, dat
 Esta primeira aplicação é **demonstração local**. Não contém autenticação, autorização real por cliente, banco de dados, armazenamento seguro de mídia nem integração com Instagram ou agente. Logo e anexos podem ser escolhidos na interface, mas ficam somente neste navegador. Não hospedar nem usar com conteúdo real de clientes até implementar esses pontos.
 
 
+
+## Revisão simplificada — 28/09/2026
+
+- Detalhe identifica o POST fixo e mostra data, arte, legenda e anexos. No desktop, arte e legenda ficam lado a lado; no celular há atalhos para legenda e anexos.
+- Barra fixa de ações: Aprovar post (prioritária enquanto aguarda aprovação), Pedir ajuste e Comentar. Aprovar altera imediatamente o card com selo, borda e superfície verde suave e atualiza a contagem. Comentários não alteram status; ajustes exigem texto e entram no histórico da versão.
+- Equipe edita título, categoria, formato, data, legenda, mídia, link publicado e compartilhamento em Story, inclusive após publicação. Pode remover/reordenar mídia, substituir arquivos, definir capa de vídeo principal ou anexo, remover anexos, excluir uma peça e remover a logo do cliente.
+- Alterações de conteúdo/arquivos criam versão em preparação e exigem reenvio/aprovação, inclusive em peças publicadas. Link e marca de compartilhamento são dados operacionais e não invalidam aprovação. O histórico de decisões permanece como registro.
+- Excluir uma peça não renumera as restantes nem reutiliza seu número na mesma sequência mensal.
+- Planejamento aceita imagem/PDF de até 20 MB por cliente/mês: adicionar, substituir, remover, baixar e enviar para aprovação. Trocar/remover invalida aprovação anterior e registra versão/atividade. Remover o exemplo é persistente: ele não reaparece ao recarregar. Arquivos continuam locais no IndexedDB; versões anteriores não têm restauração pela interface.

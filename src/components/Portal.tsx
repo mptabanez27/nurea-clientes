@@ -11,7 +11,6 @@ import {
   Check,
   CheckCircle2,
   ChevronsUpDown,
-  Download,
   FileText,
   Grid3X3,
   LayoutGrid,
@@ -20,7 +19,6 @@ import {
   MessageCircle,
   Plus,
   RotateCcw,
-  Send,
   X,
 } from "lucide-react";
 import {
@@ -259,7 +257,7 @@ export default function Portal() {
       if (content.id !== id) return content;
       const updated = transform(content);
       if (updated.format === "story" || updated.postNumber) return updated;
-      const nextNumber = prev.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1;
+      const nextNumber = Math.max(prev.nextPostNumber ?? 1, prev.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1);
       return { ...updated, postNumber: nextNumber };
     }) }));
   }
@@ -328,7 +326,7 @@ export default function Portal() {
   return (
     <div className="portal-shell">
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
-      <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`} aria-label="Navegação principal">
+      <aside inert={!!selected} className={`sidebar ${menuOpen ? "sidebar-open" : ""}`} aria-label="Navegação principal">
         <div className="sidebar-head">
           <div className="brand">
             <img src="/brand/logopng1.svg" alt="Nurea" width="172" height="50" />
@@ -347,8 +345,8 @@ export default function Portal() {
         </div>
         <nav className="side-nav">
           <span className="side-nav-label">NAVEGAÇÃO</span>
-          <button className={view === "feed" ? "active" : ""} onClick={() => navigate("feed")}><Grid3X3 size={18} /> Conteúdos <span>{feedContents.length}</span></button>
-          <button className={view === "stories" ? "active" : ""} onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <span>{storyContents.length}</span></button>
+          <button className={view === "feed" ? "active" : ""} onClick={() => navigate("feed")}><Grid3X3 size={18} /> Conteúdos <span>{visibleFeed.length}</span></button>
+          <button className={view === "stories" ? "active" : ""} onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <span>{visibleStories.length}</span></button>
           <button className={view === "planejamento" ? "active" : ""} onClick={() => navigate("planejamento")}><FileText size={18} /> Planejamento</button>
         </nav>
         <div className="sidebar-bottom">
@@ -359,7 +357,7 @@ export default function Portal() {
       </aside>
       {menuOpen && <button className="mobile-scrim" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />}
 
-      <div className="main-shell">
+      <div inert={!!selected} className="main-shell">
         <header className="topbar">
           <button className="icon-button mobile-only" onClick={() => setMenuOpen(true)} aria-label="Abrir menu"><Menu size={22} /></button>
           <div className="topbar-path"><span className="breadcrumb-context">Nurea <i>/</i> {workspace.clientName} <i>/</i></span><strong>{view === "feed" ? "Conteúdos" : view === "stories" ? "Stories" : "Planejamento"}</strong></div>

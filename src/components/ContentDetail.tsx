@@ -36,6 +36,8 @@ function revision(content: Content, note: string): Content {
 }
 
 export default function ContentDetail({ content, clientName, role, position, total, onClose, onDelete, onNavigate, onUpdate, onAction }: Props) {
+  const captionRef = useRef<HTMLDivElement>(null);
+  const attachmentsRef = useRef<HTMLDivElement>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -74,7 +76,7 @@ export default function ContentDetail({ content, clientName, role, position, tot
       interactionRef.current?.querySelector("textarea")?.focus({ preventScroll: true });
     }
   }, [adjustOpen, commentOpen]);
-  useEffect(() => { if (editOpen) dialogRef.current?.querySelector(".content-edit")?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [editOpen]);
+  useEffect(() => { if (editOpen) { dialogRef.current?.querySelector(".content-edit")?.scrollIntoView({ behavior: "smooth", block: "start" }); dialogRef.current?.querySelector<HTMLInputElement>(".content-edit input")?.focus({ preventScroll: true }); } }, [editOpen]);
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -187,7 +189,7 @@ export default function ContentDetail({ content, clientName, role, position, tot
   async function uploadVideoCover(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    const video = content.attachments?.find((item) => item.id === selectedAttachmentId && item.type.startsWith("video/"));
+    const video = selectedAttachmentId ? content.attachments?.find(item => item.id === selectedAttachmentId && item.type.startsWith("video/")) : content.media?.find(item => item.type.startsWith("video/"));
     if (!file || !video || coverSaving) return;
     if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
       setFileError("Escolha uma imagem de até 20 MB para a capa.");
@@ -201,6 +203,7 @@ export default function ContentDetail({ content, clientName, role, position, tot
       onUpdate((current) => ({
         ...revision(current, `Capa do vídeo alterada: ${video.name}`),
         attachments: (current.attachments ?? []).map((item) => item.id === video.id ? { ...item, coverFileId: id } : item),
+        media: current.media?.map(item => item.id === video.id ? { ...item, coverFileId: id } : item),
       }));
       if (video.coverFileId) await deleteLocalFile(video.coverFileId).catch(() => {});
     } catch {
@@ -220,6 +223,8 @@ export default function ContentDetail({ content, clientName, role, position, tot
   const caption = [content.caption, content.cta].filter(Boolean).join("\n\n");
   const selectedAttachment = content.attachments?.find((item) => item.id === selectedAttachmentId) ?? null;
 
+  const coverVideo = selectedAttachment?.type.startsWith("video/") ? selectedAttachment : !selectedAttachment ? content.media?.find(item => item.type.startsWith("video/")) : undefined;
+
   return <div className="modal-backdrop detail-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section ref={dialogRef} className="content-detail" role="dialog" aria-modal="true" aria-label={`Publicação: ${content.title}`}>
       <div className="content-detail-top">
@@ -232,6 +237,7 @@ export default function ContentDetail({ content, clientName, role, position, tot
           <div><span>DATA DA POSTAGEM</span><strong>{fullDate(content.date)}</strong></div>
           {role === "equipe" && <button className="detail-inline-edit" onClick={() => { startEdit(); }}>Editar data</button>}
         </div>
+        <div className="detail-quick-links"><button onClick={() => captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Ver legenda</button><button onClick={() => attachmentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Anexos ({content.attachments?.length ?? 0})</button>{selectedAttachment && <button onClick={() => setSelectedAttachmentId(null)}>Voltar à publicação</button>}</div>
         <div className="content-detail-cover">
           <div className={`content-detail-art ${content.format === "story" ? "is-story" : ""}`}>
             <MediaPreview content={content} brand={clientName} mode="detail" slideIndex={slideIndex} attachment={selectedAttachment} />
@@ -256,12 +262,12 @@ export default function ContentDetail({ content, clientName, role, position, tot
               {editMediaFiles.length > 0 && <div className="selected-media"><strong>Nova mídia</strong>{editMediaFiles.map((file, index) => <span key={index}>{index + 1}. {file.name}</span>)}</div>}
               {editMediaError && <p className="file-error" role="alert">{editMediaError}</p>}
               <p>Alterar conteúdo, data ou arquivos cria uma nova versão em preparação, mesmo em posts publicados. Link e marca de compartilhamento são dados de acompanhamento.</p>
-              <div><button type="button" className="text-button" onClick={() => setEditOpen(false)}>Cancelar</button><button type="submit" className="primary-button" disabled={editSaving}>{editSaving ? "Salvando..." : "Salvar nova versão"}</button></div>
+              <div><button type="button" className="text-button" onClick={() => setEditOpen(false)}>Cancelar</button><button type="submit" className="primary-button" disabled={editSaving}>{editSaving ? "Salvando..." : "Salvar alterações"}</button></div>
             </form> : <>
-              <div className="detail-section"><div className="detail-section-head"><FileText size={19} /><h3>Legenda</h3>{role === "equipe" && <button className="detail-inline-edit" onClick={startEdit}>Editar</button>}</div><div className="caption-block">{caption || "Legenda ainda não adicionada."}</div></div>
-              <div className="detail-section"><div className="detail-section-head"><Paperclip size={19} /><h3>Anexos</h3>{role === "equipe" && <><input ref={uploadRef} className="sr-only" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx" onChange={uploadFiles} aria-label="Selecionar anexos" /><button className="detail-inline-edit" onClick={() => uploadRef.current?.click()}><Plus size={15} /> Adicionar</button></>}</div>
+              <div ref={captionRef} className="detail-section"><div className="detail-section-head"><FileText size={19} /><h3>Legenda</h3>{role === "equipe" && <button className="detail-inline-edit" onClick={startEdit}>Editar</button>}</div><div className="caption-block">{caption || "Legenda ainda não adicionada."}</div></div>
+              <div ref={attachmentsRef} className="detail-section"><div className="detail-section-head"><Paperclip size={19} /><h3>Anexos</h3>{role === "equipe" && <><input ref={uploadRef} className="sr-only" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx" onChange={uploadFiles} aria-label="Selecionar anexos" /><button className="detail-inline-edit" onClick={() => uploadRef.current?.click()}><Plus size={15} /> Adicionar</button></>}</div>
                 {(content.attachments ?? []).length ? <div className="attachment-list">{content.attachments!.map((item) => <div className="attachment-row" key={item.id}>{item.type.startsWith("image/") || item.type.startsWith("video/") ? <button type="button" className={`attachment-preview-button ${selectedAttachmentId === item.id ? "is-selected" : ""}`} onClick={() => { setSelectedAttachmentId(item.id); bodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label={`Pré-visualizar ${item.name}`} aria-pressed={selectedAttachmentId === item.id}>{item.type.startsWith("image/") && attachmentUrls[item.id] ? <img src={attachmentUrls[item.id]} alt="" /> : <span className="attachment-icon">{item.type.startsWith("video/") ? <Play size={20} fill="currentColor" /> : <Paperclip size={20} />}</span>}<span className="attachment-copy"><strong>{item.name}</strong><small>{(item.size / 1024 / 1024).toFixed(1)} MB · {item.type.startsWith("video/") ? "Vídeo · toque para assistir" : "Imagem · toque para ampliar"}</small></span></button> : <><span className="attachment-icon"><Paperclip size={20} /></span><div><strong>{item.name}</strong><small>{(item.size / 1024 / 1024).toFixed(1)} MB · Arquivo</small></div></>}{attachmentUrls[item.id] && <a href={attachmentUrls[item.id]} download={item.name} aria-label={`Baixar ${item.name}`}><Download size={18} /></a>}{role === "equipe" && <button onClick={() => removeAttachment(item.id)} aria-label={`Remover ${item.name}`}><X size={18} /></button>}</div>)}</div> : <p className="detail-empty">Nenhum anexo nesta publicação.</p>}{fileError && <p className="file-error" role="alert">{fileError}</p>}
-                {selectedAttachment?.type.startsWith("video/") && role === "equipe" && <div className="video-cover-actions"><input ref={coverInputRef} className="sr-only" type="file" accept="image/*" onChange={uploadVideoCover} aria-label="Imagem de capa do vídeo" /><button type="button" className="outline-button" disabled={coverSaving} onClick={() => coverInputRef.current?.click()}>{coverSaving ? "Salvando capa..." : selectedAttachment.coverFileId ? "Trocar capa do vídeo" : "Selecionar capa do vídeo"}</button><p>{selectedAttachment.coverFileId ? "Capa personalizada aplicada. Ela aparece antes do play e na prévia do feed quando este vídeo é a capa da publicação." : "Envie uma imagem para aparecer antes do play. O vídeo continua igual."}</p></div>}
+                {coverVideo && role === "equipe" && <div className="video-cover-actions"><input ref={coverInputRef} className="sr-only" type="file" accept="image/*" onChange={uploadVideoCover} aria-label="Imagem de capa do vídeo" /><button type="button" className="outline-button" disabled={coverSaving} onClick={() => coverInputRef.current?.click()}>{coverSaving ? "Salvando capa..." : coverVideo.coverFileId ? "Trocar capa do vídeo" : "Selecionar capa do vídeo"}</button><p>{coverVideo.coverFileId ? "Capa personalizada aplicada. Ela aparece antes do play e na prévia do feed quando este vídeo é a capa da publicação." : "Envie uma imagem para aparecer antes do play. O vídeo continua igual."}</p></div>}
               </div>
               {content.sharedToStory && <div className="shared-note"><CheckCircle2 size={16} /> Este post também foi compartilhado no Story.</div>}
               {content.status === "publicado" && content.publishedUrl && <a className="published-link" href={content.publishedUrl} target="_blank" rel="noopener noreferrer">Ver publicação no Instagram <ArrowRight size={15} /></a>}
