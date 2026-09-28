@@ -53,7 +53,6 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const [comment, setComment] = useState("");
   const [feedback, setFeedback] = useState("");
   const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(362);
   const [saved, setSaved] = useState(false);
   const [following, setFollowing] = useState(false);
   const [editCategory, setEditCategory] = useState(content.category);
@@ -220,7 +219,9 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   async function uploadVideoCover(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    const video = selectedAttachmentId ? content.attachments?.find(item => item.id === selectedAttachmentId && item.type.startsWith("video/")) : content.media?.find(item => item.type.startsWith("video/"));
+    const video = (selectedAttachmentId ? content.attachments?.find(item => item.id === selectedAttachmentId && item.type.startsWith("video/")) : null)
+      || content.attachments?.find(item => item.type.startsWith("video/"))
+      || content.media?.find(item => item.type.startsWith("video/"));
     if (!file || !video || coverSaving) return;
     if (!file.type.startsWith("image/") || file.size > 20 * 1024 * 1024) {
       setFileError("Escolha uma imagem de até 20 MB para a capa.");
@@ -238,11 +239,19 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
       if (!coverUrl) {
         await saveLocalFile(id, file);
       }
-      onUpdate((current) => ({
-        ...revision(current, `Capa do vídeo alterada: ${video.name}`),
-        attachments: (current.attachments ?? []).map((item) => item.id === video.id ? { ...item, coverFileId: id, coverUrl } : item),
-        media: current.media?.map(item => item.id === video.id ? { ...item, coverFileId: id, coverUrl } : item),
-      }));
+      onUpdate((current) => {
+        const nextAttachments = (current.attachments ?? []).map((item) =>
+          item.id === video.id ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl } : item
+        );
+        const nextMedia = (current.media ?? []).map((item) =>
+          item.id === video.id ? { ...item, coverFileId: id, coverUrl: coverUrl ?? item.coverUrl } : item
+        );
+        return {
+          ...revision(current, `Capa do vídeo alterada: ${video.name}`),
+          attachments: nextAttachments,
+          media: nextMedia,
+        };
+      });
       if (video.coverFileId) await deleteLocalFile(video.coverFileId).catch(() => {});
     } catch {
       await deleteLocalFile(id).catch(() => {});
@@ -261,7 +270,9 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const caption = [content.caption, content.cta].filter(Boolean).join("\n\n");
   const selectedAttachment = content.attachments?.find((item) => item.id === selectedAttachmentId) ?? null;
 
-  const coverVideo = selectedAttachment?.type.startsWith("video/") ? selectedAttachment : !selectedAttachment ? content.media?.find(item => item.type.startsWith("video/")) : undefined;
+  const coverVideo = (selectedAttachment?.type.startsWith("video/") ? selectedAttachment : null)
+    || content.attachments?.find(item => item.type.startsWith("video/"))
+    || content.media?.find(item => item.type.startsWith("video/"));
   const instagramHandle = getInstagramHandle(clientSlug || clientName);
   const totalSlides = content.media?.length ?? content.slides?.length ?? 1;
 
@@ -359,10 +370,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                 <button
                   type="button"
                   className={`insta-action-btn ${liked ? "is-liked" : ""}`}
-                  onClick={() => {
-                    setLiked((prev) => !prev);
-                    setLikeCount((prev) => (liked ? prev - 1 : prev + 1));
-                  }}
+                  onClick={() => setLiked((prev) => !prev)}
                   aria-label={liked ? "Descurtir" : "Curtir"}
                 >
                   <Heart
@@ -417,13 +425,6 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                   <Bookmark size={24} fill={saved ? "#262626" : "none"} color="#262626" />
                 </button>
               </div>
-            </div>
-
-            {/* Likes */}
-            <div className="insta-likes-row">
-              <span className="insta-likes-count">
-                <strong>{likeCount.toLocaleString("pt-BR")} curtidas</strong>
-              </span>
             </div>
 
             {/* Caption */}

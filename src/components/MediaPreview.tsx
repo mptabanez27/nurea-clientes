@@ -30,14 +30,26 @@ export function InteractiveVideoPlayer({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasPlayed, setHasPlayed] = useState(false);
+
+  useEffect(() => {
+    setHasPlayed(false);
+    setIsPlaying(false);
+  }, [src, poster]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const onPlay = () => setIsPlaying(true);
+    const onPlay = () => {
+      setIsPlaying(true);
+      setHasPlayed(true);
+    };
     const onPause = () => setIsPlaying(false);
-    const onEnded = () => setIsPlaying(false);
+    const onEnded = () => {
+      setIsPlaying(false);
+      setHasPlayed(false);
+    };
 
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
@@ -64,6 +76,8 @@ export function InteractiveVideoPlayer({
     }
   };
 
+  const showCover = Boolean(poster) && !hasPlayed;
+
   return (
     <div className="interactive-video-player" onClick={handlePlayToggle}>
       <video
@@ -77,6 +91,15 @@ export function InteractiveVideoPlayer({
         className="interactive-video-element"
         aria-label={title || "Vídeo da publicação"}
       />
+      {showCover && (
+        <div className="video-custom-cover-frame" onClick={handlePlayToggle}>
+          <img
+            src={poster}
+            alt={title ? `Capa de: ${title}` : "Capa do vídeo"}
+            className="video-custom-cover-img"
+          />
+        </div>
+      )}
       {!isPlaying && (
         <div className="video-play-overlay">
           <button
@@ -87,7 +110,7 @@ export function InteractiveVideoPlayer({
           >
             <Play size={36} fill="#ffffff" color="#ffffff" style={{ marginLeft: "4px" }} />
           </button>
-          {isDemo && (
+          {isDemo && !showCover && (
             <span className="video-demo-tag">
               Vídeo demonstrativo (Reels) · Clique no play para assistir
             </span>
@@ -118,6 +141,13 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
         if (item.url) {
           if (item.coverUrl) {
             setPosters((previous) => ({ ...previous, [item.id]: item.coverUrl! }));
+          } else if (item.coverFileId) {
+            const custom = await getLocalFile(item.coverFileId);
+            if (custom && active) {
+              const posterUrl = URL.createObjectURL(custom);
+              created.push(posterUrl);
+              setPosters((previous) => ({ ...previous, [item.id]: posterUrl }));
+            }
           }
           return [item.id, item.url] as const;
         }
@@ -126,17 +156,21 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
         const url = URL.createObjectURL(blob);
         created.push(url);
         if (item.type.startsWith("video/")) {
-          const posterPromise = item.coverFileId
-            ? getLocalFile(item.coverFileId).then((custom) => custom ?? getVideoPoster(item.id, blob))
-            : getVideoPoster(item.id, blob);
-          posterPromise
-            .then((poster) => {
-              if (!poster || !active) return;
-              const posterUrl = URL.createObjectURL(poster);
-              created.push(posterUrl);
-              setPosters((previous) => ({ ...previous, [item.id]: posterUrl }));
-            })
-            .catch(() => {});
+          if (item.coverUrl) {
+            setPosters((previous) => ({ ...previous, [item.id]: item.coverUrl! }));
+          } else {
+            const posterPromise = item.coverFileId
+              ? getLocalFile(item.coverFileId).then((custom) => custom ?? getVideoPoster(item.id, blob))
+              : getVideoPoster(item.id, blob);
+            posterPromise
+              .then((poster) => {
+                if (!poster || !active) return;
+                const posterUrl = URL.createObjectURL(poster);
+                created.push(posterUrl);
+                setPosters((previous) => ({ ...previous, [item.id]: posterUrl }));
+              })
+              .catch(() => {});
+          }
         }
         return [item.id, url] as const;
       })
@@ -157,6 +191,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
   const item = items[Math.min(slideIndex, Math.max(0, items.length - 1))];
   const url = item ? urls[item.id] || item.url : undefined;
   const isVideo = item ? item.type.startsWith("video/") : content.format === "reels";
+  const poster = item ? posters[item.id] || item.coverUrl : undefined;
 
   // Detail mode with video (either uploaded or fallback demo)
   if (mode === "detail" && isVideo) {
@@ -165,7 +200,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
         <div className="media-preview media-preview-detail">
           <InteractiveVideoPlayer
             src={url}
-            poster={posters[item?.id ?? ""] || item?.coverUrl}
+            poster={poster}
             title={item?.name || content.title}
           />
         </div>
@@ -176,6 +211,7 @@ export default function MediaPreview({ content, brand, mode = "grid", slideIndex
       <div className="media-preview media-preview-detail">
         <InteractiveVideoPlayer
           src="/sample-reel.mp4"
+          poster={poster}
           isDemo={true}
           title={content.title}
         />
