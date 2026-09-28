@@ -81,32 +81,48 @@ export const planStatusLabel: Record<PlanStatus, string> = {
   rascunho: "Ainda não enviado", aguardando: "Aguardando aprovação", ajuste: "Ajuste solicitado", aprovado: "Aprovado",
 };
 
-type DemoClient = {
+export type DemoClient = {
   id: string;
   name: string;
   theme: string;
+  accessToken: string;
   posts: readonly [string, string, string, string, string, string, string, string];
 };
 
 export const demoClients: readonly DemoClient[] = [
   {
-    id: "meliza-doces", name: "Meliza Doces", theme: "doces",
+    id: "meliza-doces",
+    name: "Meliza Doces",
+    theme: "doces",
+    accessToken: "77680617a72cb5adbaa287bae2ff6deb",
     posts: ["Um doce para começar o mês", "Bastidores da confeitaria", "Ideias para uma mesa especial", "O cuidado em cada detalhe", "Um sabor para compartilhar", "Inspiração para comemorar", "Como nasce uma criação", "Momentos que pedem doçura"],
   },
   {
-    id: "studio-rose-brighenti", name: "Studio Rose Brighenti", theme: "beleza",
+    id: "studio-rose-brighenti",
+    name: "Studio Rose Brighenti",
+    theme: "beleza",
+    accessToken: "a3cb1b27a5fe0dfdecc5606e9f064ab8",
     posts: ["Seu estilo, sua expressão", "Bastidores de um atendimento", "Cuidados para o dia a dia", "O poder de uma mudança", "Detalhes de uma transformação", "Rotina de autocuidado", "Um novo olhar para os fios", "Beleza que acompanha você"],
   },
   {
-    id: "papillon-parfums", name: "Papillon Parfums", theme: "fragrâncias",
+    id: "papillon-parfums",
+    name: "Papillon Parfums",
+    theme: "fragrâncias",
+    accessToken: "papillon-parfums-a918f",
     posts: ["A memória de uma fragrância", "Bastidores de uma escolha", "Notas para descobrir", "Seu perfume, sua presença", "Inspiração em cada detalhe", "Como escolher uma fragrância", "O ritual de perfumar", "Uma nova forma de sentir"],
   },
   {
-    id: "elite-academia", name: "Elite Academia", theme: "movimento",
+    id: "elite-academia",
+    name: "Elite Academia",
+    theme: "movimento",
+    accessToken: "elite-academia-b827c",
     posts: ["Seu movimento começa hoje", "Bastidores da rotina de treino", "Pequenos passos, constância", "Treinar no seu ritmo", "Energia para continuar", "Um hábito de cada vez", "Movimento para o dia a dia", "Seu próximo passo"],
   },
   {
-    id: "centro-de-danca-impulso", name: "Centro de Dança Impulso", theme: "dança",
+    id: "centro-de-danca-impulso",
+    name: "Centro de Dança Impulso",
+    theme: "dança",
+    accessToken: "danca-impulso-c736d",
     posts: ["A dança começa no primeiro passo", "Bastidores de uma aula", "Movimento que conta histórias", "Um espaço para se expressar", "O ritmo de cada pessoa", "Entre passos e descobertas", "A energia de dançar juntos", "Novas formas de se mover"],
   },
 ];

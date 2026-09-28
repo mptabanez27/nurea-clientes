@@ -119,7 +119,8 @@ export default function Portal({
 
   function copyClientLink() {
     const current = clientsList.find((c) => c.id === clientId);
-    const token = clientToken || (current as any)?.access_token;
+    const demoClient = demoClients.find((c) => c.id === clientId);
+    const token = clientToken || (current as any)?.access_token || demoClient?.accessToken;
     if (!token) {
       alert("Token de acesso exclusivo ainda não disponível para este cliente.");
       return;
@@ -135,6 +136,41 @@ export default function Portal({
       });
     } else {
       window.prompt("Copie o link exclusivo de acesso:", fullUrl);
+    }
+  }
+
+  async function handleCreateClient() {
+    const name = window.prompt("Nome do novo cliente:");
+    if (!name || !name.trim()) return;
+    try {
+      const { createClient } = await import("@/lib/db");
+      const created = await createClient(name.trim());
+      if (created) {
+        const newEntry = { id: created.id, name: created.name, access_token: created.access_token };
+        setClientsList((prev) => [...prev, newEntry]);
+        const newWorkspace: Workspace = {
+          clientName: created.name,
+          month: "Setembro de 2026",
+          monthKey: "2026-09",
+          plan: { status: "rascunho", version: 1, activity: [] },
+          contents: [],
+          nextPostNumber: 1,
+        };
+        setWorkspaces((prev) => ({ ...prev, [created.id]: newWorkspace }));
+        setClientId(created.id);
+        setSelectedId(null);
+        setClientMenuOpen(false);
+        setMenuOpen(false);
+        setNewOpen(false);
+        setPlanAdjustOpen(false);
+        setLogoEditorOpen(false);
+        setNewMonthOpen(false);
+        setView("feed");
+        setPendingOnly(false);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao criar cliente.");
     }
   }
 
@@ -480,16 +516,7 @@ export default function Portal({
                 type="button"
                 className="outline-button"
                 style={{ margin: "8px 12px", width: "calc(100% - 24px)", fontSize: "11px", minHeight: "36px" }}
-                onClick={async () => {
-                  const name = window.prompt("Nome do novo cliente:");
-                  if (!name || !name.trim()) return;
-                  const { createClient } = await import("@/lib/db");
-                  const created = await createClient(name.trim());
-                  if (created) {
-                    setClientsList((prev) => [...prev, created]);
-                    changeClient(created.id);
-                  }
-                }}
+                onClick={handleCreateClient}
               >
                 <Plus size={14} /> Novo cliente
               </button>
