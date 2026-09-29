@@ -15,3 +15,8 @@
 
 - Em 28/09/2026, a barra lateral passou a usar logopng1.svg, uma versão vetorial com transparência, evitando retângulo de fundo no arquivo. Os cards do feed destacam o número POST e ordenam a grade numericamente da esquerda para a direita.
 - Em 28/09/2026, o refinamento visual trocou o preenchimento dourado de `POST N` por destaque tipográfico verde, introduziu superfícies translúcidas e blur contextual, e adicionou transições de entrada e resposta nos controles com suporte a movimento reduzido.
+
+- Em 28/09/2026, o usuário decidiu manter a regra atual de numeração e reordenação de POST 1, POST 2 etc.; a revisão não altera essa lógica.
+- A simulação em grade oferece mês selecionado ou todos os conteúdos já disponíveis ao cliente no portal, em ordem de data mais recente. O perfil Studio Rose usa `@studiorosebrighenti`. A prévia não representa publicação automática no Instagram.
+- A aprovação do planejamento exige arquivo próprio; o exemplo não é documento enviável. Novos posts começam após aprovação do planejamento.
+- Decisões registradas no histórico permanecem visíveis; a equipe pode lançar uma correção ou desconsideração como novo evento.

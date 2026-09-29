@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMonthCycleRecord } from "@/lib/db";
+import { requireAdmin } from "@/lib/apiAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const body = await req.json();
     const { clientId, monthKey } = body;

@@ -6,7 +6,8 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "smoke:auth": "node --env-file-if-exists=.env.local scripts/smoke-auth.mjs"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",

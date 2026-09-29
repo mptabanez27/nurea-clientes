@@ -19,7 +19,8 @@ type Props = {
   onDelete: () => void;
   onNavigate: (direction: -1 | 1) => void;
   onUpdate: (transform: (content: Content) => Content) => void;
-  onAction: (status: ContentStatus, action: string, note?: string, author?: string) => void;
+  onActivityAdded: (activity: Content["activity"][number]) => void;
+  onAction: (status: ContentStatus, action: string, note?: string, author?: string) => Promise<boolean>;
 };
 
 function uid() { return crypto.randomUUID(); }
@@ -28,6 +29,7 @@ function fullDate(date: string) {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
 function getInstagramHandle(name: string): string {
+  if (name.toLowerCase().includes("rose-brighenti") || name.toLowerCase().includes("rose brighenti")) return "studiorosebrighenti";
   const clean = name
     .toLowerCase()
     .normalize("NFD")
@@ -46,15 +48,12 @@ function revision(content: Content, note: string): Content {
   };
 }
 
-export default function ContentDetail({ content, clientName, clientLogo, clientSlug, role, position, total, onClose, onDelete, onNavigate, onUpdate, onAction }: Props) {
+export default function ContentDetail({ content, clientName, clientLogo, clientSlug, role, position, total, onClose, onDelete, onNavigate, onUpdate, onActivityAdded, onAction }: Props) {
   const captionRef = useRef<HTMLDivElement>(null);
   const attachmentsRef = useRef<HTMLDivElement>(null);
   const [commentOpen, setCommentOpen] = useState(false);
   const [comment, setComment] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [liked, setLiked] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [following, setFollowing] = useState(false);
   const [editCategory, setEditCategory] = useState(content.category);
   const [editPublishedUrl, setEditPublishedUrl] = useState(content.publishedUrl ?? "");
   const [editShared, setEditShared] = useState(!!content.sharedToStory);
@@ -96,50 +95,42 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
 
   async function handleSaveActivityEdit(activityId: string) {
     if (!editActivityAuthor.trim() || !editActivityAction.trim()) return;
-    const author = editActivityAuthor.trim();
-    const action = editActivityAction.trim();
-    const note = editActivityNote.trim() || undefined;
-
-    onUpdate((current) => ({
-      ...current,
-      activity: current.activity.map((a) =>
-        a.id === activityId ? { ...a, author, action, note } : a
-      ),
-    }));
-
-    setEditingActivityId(null);
-    setFeedback("Registro do histórico atualizado.");
-
+    const original = content.activity.find((item) => item.id === activityId);
+    if (!original) return;
+    const note = `Retifica o registro de ${original.author} em ${formatActivityDate(original.at)} (${original.action}). Autor correto: ${editActivityAuthor.trim()}. ${editActivityNote.trim()}`.trim();
+    const action = `Correção: ${editActivityAction.trim()}`;
     try {
-      await fetch("/api/activities", {
-        method: "PATCH",
+      const response = await fetch("/api/activities", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          activityId,
-          author,
-          action,
-          note: note || "",
-        }),
+        body: JSON.stringify({ contentId: content.id, author: "Equipe Nurea", action, note, version: content.version }),
       });
+      if (!response.ok) throw new Error("A correção não foi salva.");
+      const data = await response.json();
+      onActivityAdded({ id: data.id, author: "Equipe Nurea", action, note, at: todayStamp(), version: content.version });
+      setEditingActivityId(null);
+      setFeedback("Correção registrada no histórico.");
     } catch (err) {
-      console.error("Erro ao atualizar atividade no servidor:", err);
+      setFeedback(err instanceof Error ? err.message : "Não foi possível registrar a correção.");
     }
   }
 
   async function handleDeleteActivity(activityId: string) {
-    if (!window.confirm("Deseja realmente excluir este registro do histórico?")) return;
-    onUpdate((current) => ({
-      ...current,
-      activity: current.activity.filter((a) => a.id !== activityId),
-    }));
-    setFeedback("Registro removido do histórico.");
-
+    const original = content.activity.find((item) => item.id === activityId);
+    if (!original || !window.confirm("Desconsiderar este registro? Ele continuará visível para preservar o histórico.")) return;
+    const action = "Registro desconsiderado";
+    const note = `Desconsiderar “${original.action}” de ${original.author} em ${formatActivityDate(original.at)}.`;
     try {
-      await fetch(`/api/activities?id=${encodeURIComponent(activityId)}`, {
-        method: "DELETE",
+      const response = await fetch("/api/activities", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentId: content.id, author: "Equipe Nurea", action, note, version: content.version }),
       });
+      if (!response.ok) throw new Error("Não foi possível desconsiderar o registro.");
+      const data = await response.json();
+      onActivityAdded({ id: data.id, author: "Equipe Nurea", action, note, at: todayStamp(), version: content.version });
+      setFeedback("Retificação registrada no histórico.");
     } catch (err) {
-      console.error("Erro ao excluir atividade no servidor:", err);
+      setFeedback(err instanceof Error ? err.message : "Não foi possível desconsiderar o registro.");
     }
   }
 
@@ -220,7 +211,9 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
         try {
           const { uploadFileToStorage } = await import("@/lib/cloudStorage");
           fileUrl = await uploadFileToStorage(file, `posts/${content.id}-${Date.now()}-${file.name}`);
-        } catch {}
+        } catch (error) {
+          if (process.env.NODE_ENV === "production") throw error;
+        }
         const id = uid();
         if (!fileUrl) {
           await saveLocalFile(id, file);
@@ -256,7 +249,12 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
       try {
         const { uploadFileToStorage } = await import("@/lib/cloudStorage");
         fileUrl = await uploadFileToStorage(file, `attachments/${content.id}-${Date.now()}-${file.name}`);
-      } catch {}
+      } catch (error) {
+        if (process.env.NODE_ENV === "production") {
+          setFileError(error instanceof Error ? error.message : "Não foi possível enviar o anexo.");
+          continue;
+        }
+      }
       const id = uid();
       try {
         if (!fileUrl) {
@@ -293,7 +291,13 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
     try {
       const { uploadFileToStorage } = await import("@/lib/cloudStorage");
       coverUrl = await uploadFileToStorage(file, `covers/${content.id}-${Date.now()}-${file.name}`);
-    } catch {}
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        setFileError(error instanceof Error ? error.message : "Não foi possível enviar a capa.");
+        setCoverSaving(false);
+        return;
+      }
+    }
     const id = uid();
     try {
       if (!coverUrl) {
@@ -421,6 +425,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
         </div>
         <div className="detail-quick-links"><button onClick={() => captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Ver legenda</button><button onClick={() => attachmentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Anexos ({content.attachments?.length ?? 0})</button>{selectedAttachment && <button onClick={() => setSelectedAttachmentId(null)}>Voltar à publicação</button>}</div>
         <div className="content-detail-preview-col">
+          <p className="instagram-preview-label">Prévia visual · Instagram</p>
           <div className="insta-post-card">
             {/* Header */}
             <div className="insta-header">
@@ -434,20 +439,11 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                 </div>
                 <div className="insta-user-meta">
                   <span className="insta-username">{instagramHandle}</span>
-                  <span className="insta-location">Áudio original · {clientName}</span>
+                  <span className="insta-location">Prévia do conteúdo · {clientName}</span>
                 </div>
               </div>
               <div className="insta-header-actions">
-                <button
-                  type="button"
-                  className={`insta-follow-btn ${following ? "is-following" : ""}`}
-                  onClick={() => setFollowing((prev) => !prev)}
-                >
-                  {following ? "Seguindo" : "Seguir"}
-                </button>
-                <button type="button" className="insta-more-btn" aria-label="Opções">
-                  <MoreHorizontal size={18} />
-                </button>
+                <MoreHorizontal size={18} aria-hidden="true" />
               </div>
             </div>
 
@@ -498,44 +494,9 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
             {/* Action Bar */}
             <div className="insta-action-bar">
               <div className="insta-actions-left">
-                <button
-                  type="button"
-                  className={`insta-action-btn ${liked ? "is-liked" : ""}`}
-                  onClick={() => setLiked((prev) => !prev)}
-                  aria-label={liked ? "Descurtir" : "Curtir"}
-                >
-                  <Heart
-                    size={24}
-                    fill={liked ? "#ed4956" : "none"}
-                    color={liked ? "#ed4956" : "#262626"}
-                    strokeWidth={liked ? 0 : 2}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="insta-action-btn"
-                  onClick={() => {
-                    captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    setCommentOpen(true);
-                  }}
-                  aria-label="Comentar"
-                >
-                  <MessageCircle size={24} color="#262626" />
-                </button>
-                <button
-                  type="button"
-                  className="insta-action-btn"
-                  onClick={() => {
-                    if (navigator.clipboard) {
-                      navigator.clipboard.writeText(content.publishedUrl || window.location.href);
-                      setFeedback("Link da publicação copiado!");
-                      setTimeout(() => setFeedback(""), 3000);
-                    }
-                  }}
-                  aria-label="Compartilhar"
-                >
-                  <Send size={24} color="#262626" />
-                </button>
+                <Heart size={24} color="#262626" aria-hidden="true" />
+                <MessageCircle size={24} color="#262626" aria-hidden="true" />
+                <Send size={24} color="#262626" aria-hidden="true" />
               </div>
 
               {!selectedAttachment && content.format === "carrossel" && totalSlides > 1 && (
@@ -547,14 +508,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
               )}
 
               <div className="insta-actions-right">
-                <button
-                  type="button"
-                  className={`insta-action-btn ${saved ? "is-saved" : ""}`}
-                  onClick={() => setSaved((prev) => !prev)}
-                  aria-label={saved ? "Salvo" : "Salvar"}
-                >
-                  <Bookmark size={24} fill={saved ? "#262626" : "none"} color="#262626" />
-                </button>
+                <Bookmark size={24} color="#262626" aria-hidden="true" />
               </div>
             </div>
 
@@ -569,10 +523,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                   {content.caption.length > 140 ? `${content.caption.slice(0, 140)}...` : content.caption}
                 </p>
               )}
-              <div className="insta-hashtags">
-                <span>#agencianurea</span> <span>#marketingdigital</span> <span>#{instagramHandle}</span>
-              </div>
-              <span className="insta-time-stamp">HÁ 2 HORAS · VER TRADUÇÃO</span>
+              <span className="insta-time-stamp">Simulação de visualização</span>
             </div>
           </div>
         </div>
@@ -772,7 +723,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
                 <h4>Histórico</h4>
                 {role === "equipe" && (
-                  <span style={{ fontSize: "9px", color: "#81998b", fontWeight: 600 }}>Admin: editar / excluir</span>
+                  <span style={{ fontSize: "9px", color: "#81998b", fontWeight: 600 }}>Correções preservam o registro original</span>
                 )}
               </div>
               {content.activity.length ? (
@@ -827,7 +778,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                             Cancelar
                           </button>
                           <button type="submit" className="primary-button" style={{ fontSize: "11px", padding: "4px 10px", minHeight: "28px" }}>
-                            Salvar
+                            Registrar correção
                           </button>
                         </div>
                       </form>
@@ -848,7 +799,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                             type="button"
                             className="icon-button"
                             style={{ width: "22px", height: "22px", color: "#6a7b70" }}
-                            title="Editar este registro"
+                            title="Corrigir este registro"
                             onClick={() => {
                               setEditingActivityId(activity.id);
                               setEditActivityAuthor(activity.author);
@@ -862,7 +813,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                             type="button"
                             className="icon-button"
                             style={{ width: "22px", height: "22px", color: "#c94a29" }}
-                            title="Excluir este registro"
+                            title="Desconsiderar este registro"
                             onClick={() => handleDeleteActivity(activity.id)}
                           >
                             <Trash2 size={11} />
@@ -886,7 +837,7 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
         </div>
         <div className="review-buttons">
           {role === "cliente" && content.status === "aguardando" && (
-            <button className="primary-button approve-button" onClick={() => { onAction("aprovado", "Conteúdo aprovado"); setAdjustOpen(false); setFeedback("✓ Aprovado! O feed já foi atualizado."); }}>
+            <button className="primary-button approve-button" onClick={async () => { const saved = await onAction("aprovado", "Conteúdo aprovado"); if (saved) { setAdjustOpen(false); setFeedback("Aprovado! O feed foi atualizado."); } }}>
               <CheckCircle2 size={19} /> Aprovar post
             </button>
           )}

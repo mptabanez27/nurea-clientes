@@ -1,4 +1,4 @@
-import { supabase, getSupabaseAdmin } from "./supabase";
+import { getSupabaseAdmin } from "./supabase";
 import {
   Content,
   ContentFormat,
@@ -37,9 +37,10 @@ export async function getClientByToken(token: string): Promise<ClientRecord | nu
     console.warn("Consulta do cliente por token no Supabase falhou:", err);
   }
 
-  // Fallback garantido usando demoClients
+  if (process.env.NODE_ENV === "production") return null;
+  // Dados de demonstração disponíveis somente no desenvolvimento local.
   const { demoClients } = await import("./demo");
-  const demo = demoClients.find((c) => c.accessToken === token || c.id === token);
+  const demo = demoClients.find((c) => c.accessToken === token);
   if (demo) {
     return {
       id: demo.id,
@@ -66,11 +67,13 @@ export async function getAllClients(): Promise<ClientRecord[]> {
       .select("*")
       .order("name", { ascending: true });
 
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       return data as ClientRecord[];
     }
+    if (error) throw error;
   } catch (err) {
     console.warn("Consulta de clientes no Supabase falhou:", err);
+    if (process.env.NODE_ENV === "production") throw err;
   }
 
   // Fallback com os 5 clientes garantidos
@@ -129,17 +132,7 @@ export async function createClient(name: string): Promise<ClientRecord | null> {
     console.error("Erro ao criar cliente no Supabase:", err);
   }
 
-  return {
-    id,
-    name,
-    access_token: token,
-    logo_url: null,
-    logo_scale: 100,
-    logo_offset_x: 0,
-    logo_offset_y: 0,
-    logo_border: false,
-    created_at: new Date().toISOString(),
-  };
+  throw new Error("Não foi possível criar o cliente no banco de dados.");
 }
 
 // Atualizar logo e enquadramento do cliente
@@ -184,6 +177,10 @@ export async function updateClientLogoSettings(
 // Criar ou garantir ciclo de mês no banco
 export async function createMonthCycleRecord(clientId: string, monthKey: string) {
   const admin = getSupabaseAdmin();
+  const { data: existing, error: existingError } = await admin.from("month_cycles")
+    .select("*").eq("client_id", clientId).eq("month_key", monthKey).maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return existing;
   const [year, month] = monthKey.split("-").map(Number);
   const monthLabel = new Intl.DateTimeFormat("pt-BR", {
     month: "long",
@@ -194,7 +191,7 @@ export async function createMonthCycleRecord(clientId: string, monthKey: string)
 
   const { data, error } = await admin
     .from("month_cycles")
-    .upsert(
+    .insert(
       {
         client_id: clientId,
         month_key: monthKey,
@@ -202,8 +199,7 @@ export async function createMonthCycleRecord(clientId: string, monthKey: string)
         plan_status: "rascunho",
         plan_version: 1,
         next_post_number: 1,
-      },
-      { onConflict: "client_id,month_key" }
+      }
     )
     .select()
     .single();
@@ -244,6 +240,7 @@ export async function loadWorkspaceData(
         plan: {
           status: c.plan_status as PlanStatus,
           version: c.plan_version,
+          exampleRemoved: c.plan_example_removed || false,
           file: c.plan_file_url
             ? {
                 id: c.id,
@@ -283,8 +280,13 @@ export async function loadWorkspaceData(
     }
   }
 
-  // Garantir que 2026-09, 2026-10 e targetMonthKey sempre existam no mapa retornado
-  const guaranteedKeys = Array.from(new Set(["2026-09", "2026-10", targetMonthKey, ...Object.keys(monthsMap)]));
+  const knownMonths = Object.keys(monthsMap).sort();
+  if (knownMonths.length > 0 && !monthsMap[targetMonthKey]) {
+    targetMonthKey = knownMonths[knownMonths.length - 1];
+  }
+
+  // O mês solicitado pode ser exibido vazio, sem gravar um ciclo ao ler.
+  const guaranteedKeys = Array.from(new Set([targetMonthKey, ...Object.keys(monthsMap)]));
   for (const k of guaranteedKeys) {
     if (!monthsMap[k]) {
       monthsMap[k] = {
@@ -297,13 +299,6 @@ export async function loadWorkspaceData(
         nextPostNumber: 1,
       };
     }
-  }
-
-  // Garantir que targetMonthKey esteja persistido no banco
-  if (!cycles?.some((c) => c.month_key === targetMonthKey)) {
-    createMonthCycleRecord(clientId, targetMonthKey).catch((err) =>
-      console.warn("Auto-create month cycle failed:", err)
-    );
   }
 
   // Buscar atividades do plano para o ciclo ativo
@@ -518,7 +513,7 @@ export async function addActivityRecord(
 
   if (error) {
     console.error("Erro ao registrar atividade:", error);
-    return undefined;
+    throw error;
   }
   return data?.id;
 }
@@ -571,40 +566,45 @@ export async function updatePlanStatusRecord(
   action: string,
   author: string,
   note?: string,
-  fileUrl?: string,
-  fileName?: string
+  fileUrl?: string | null,
+  fileName?: string | null,
+  exampleRemoved?: boolean
 ) {
   const admin = getSupabaseAdmin();
+  const { data: previous, error: lookupError } = await admin.from("month_cycles")
+    .select("plan_status, plan_version, plan_file_url, plan_example_removed")
+    .eq("client_id", clientId).eq("month_key", monthKey).single();
+  if (lookupError || !previous) throw lookupError || new Error("Mês não encontrado.");
   const updates: Record<string, any> = {
     plan_status: status,
   };
-  if (fileUrl) {
-    updates.plan_file_url = fileUrl;
-    updates.plan_file_name = fileName || "Planejamento editorial";
+  if ((fileUrl !== undefined && fileUrl !== previous.plan_file_url) || (exampleRemoved !== undefined && exampleRemoved !== previous.plan_example_removed)) {
+    updates.plan_version = (previous.plan_version || 1) + 1;
   }
+  if (fileUrl !== undefined) {
+    updates.plan_file_url = fileUrl || null;
+    updates.plan_file_name = fileUrl ? (fileName || "Planejamento editorial") : null;
+  }
+  if (exampleRemoved !== undefined) updates.plan_example_removed = exampleRemoved;
 
-  const { data: cycle } = await admin
+  const { data: cycle, error: cycleError } = await admin
     .from("month_cycles")
-    .upsert(
-      {
-        client_id: clientId,
-        month_key: monthKey,
-        month_name: monthKey,
-        ...updates,
-      },
-      { onConflict: "client_id,month_key" }
-    )
+    .update(updates)
+    .eq("client_id", clientId)
+    .eq("month_key", monthKey)
     .select("id, plan_version")
     .single();
+  if (cycleError) throw cycleError;
 
   if (cycle) {
-    await admin.from("activities").insert({
+    const { error: activityError } = await admin.from("activities").insert({
       month_cycle_id: cycle.id,
       author,
       action,
       note,
       version: cycle.plan_version || 1,
     });
+    if (activityError) throw activityError;
   }
 }
 

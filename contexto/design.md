@@ -37,3 +37,5 @@ Miniaturas leves e mídia completa sob demanda. Sem reprodução automática com
 ## Hierarquia de revisão — 28/09/2026
 
 Capa compacta e resumo recolhido deixam a prévia do feed mais próxima da entrada. A aprovação é a ação visual dominante em barra fixa de vidro fosco no detalhe. O aprovado tem símbolo de confirmação e texto, além da cor. Comentário e ajuste são ações distintas. No desktop, mídia e legenda ficam lado a lado; no celular, atalhos evitam rolagem longa. O diálogo restringe foco por teclado e torna o conteúdo de fundo inerte. Translucidez preserva fundos legíveis e respeita movimento reduzido.
+
+Na simulação do feed da Studio Rose, usar `@studiorosebrighenti`. O seletor discreto “Mês selecionado / Todo o portal” fica acima dos ícones da grade; a visão completa reúne as peças visíveis ao cliente de todos os ciclos, mais recentes primeiro. Ícones do Instagram são elementos visuais da prévia, sem botões fictícios de seguir, curtir ou salvar. Ações de aprovação e comentário permanecem nos controles próprios do portal.

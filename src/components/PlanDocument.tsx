@@ -39,6 +39,7 @@ export default function PlanDocument({ plan, monthKey, team, onChange }: { plan:
         const { uploadFileToStorage } = await import("@/lib/cloudStorage");
         fileUrl = await uploadFileToStorage(file, `plans/${monthKey}-${Date.now()}-${file.name}`);
       } catch (err) {
+        if (process.env.NODE_ENV === "production") throw err;
         console.warn("Upload em nuvem falhou, tentando fallback local:", err);
       }
       const id = crypto.randomUUID();

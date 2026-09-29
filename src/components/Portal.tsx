@@ -72,6 +72,7 @@ function uid() {
 }
 
 function getInstagramHandle(name: string) {
+  if (name.toLowerCase().includes("rose brighenti")) return "@studiorosebrighenti";
   return "@" + name
     .toLowerCase()
     .normalize("NFD")
@@ -103,8 +104,10 @@ export default function Portal({
   clientToken,
   availableClients,
 }: PortalProps = {}) {
-  const [workspaces, setWorkspaces] = useState<Record<string, Workspace>>(initialWorkspaces);
-  const [clientId, setClientId] = useState(initialClientId ?? defaultClientId);
+  const [workspaces, setWorkspaces] = useState<Record<string, Workspace>>(process.env.NODE_ENV === "production" ? {} : initialWorkspaces);
+  const [clientId, setClientId] = useState(initialClientId ?? availableClients?.[0]?.id ?? defaultClientId);
+  const [cloudLoadedWorkspace, setCloudLoadedWorkspace] = useState<string | null>(null);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [role, setRole] = useState<Role>(fixedRole ? "cliente" : (initialRole ?? "cliente"));
@@ -136,6 +139,11 @@ export default function Portal({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [instaFeedOpen, setInstaFeedOpen] = useState(false);
+  const [instaScope, setInstaScope] = useState<"mes" | "todos">("mes");
+  const [allFeed, setAllFeed] = useState<{ monthKey: string; content: Content }[]>([]);
+  const [allFeedLoading, setAllFeedLoading] = useState(false);
+  const [allFeedError, setAllFeedError] = useState("");
+  const [pendingDetail, setPendingDetail] = useState<{ id: string; monthKey: string } | null>(null);
   const [restoreModalOpen, setRestoreModalOpen] = useState(false);
   const [restoreConfirmText, setRestoreConfirmText] = useState("");
   const [syncingCloud, setSyncingCloud] = useState(false);
@@ -145,13 +153,25 @@ export default function Portal({
   const logoModalCloseRef = useRef<HTMLButtonElement>(null);
   const logoDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const lastTriggerRef = useRef<HTMLElement | null>(null);
+  function apiFetch(input: RequestInfo | URL, init?: RequestInit) {
+    const headers = new Headers(init?.headers);
+    if (clientToken) headers.set("x-nurea-client-token", clientToken);
+    return fetch(input, { ...init, headers });
+  }
+
+  async function checkedApi(input: RequestInfo | URL, init?: RequestInit) {
+    const response = await apiFetch(input, init);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || "Não foi possível salvar. Tente novamente.");
+    }
+    return response;
+  }
   const workspace = workspaces[clientId] ?? initialWorkspaces[defaultClientId];
   const logoUrl = logoPreview && logoPreview.id === workspace.logoFileId ? logoPreview.url : null;
   const activeMonthKey = workspace.monthKey ?? "2026-09";
   const monthKeys = Array.from(
     new Set([
-      "2026-09",
-      "2026-10",
       ...Object.keys(workspace.months ?? {}),
       activeMonthKey,
     ])
@@ -162,40 +182,30 @@ export default function Portal({
 
   function reorderFeed(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
-
-    setWorkspace((prev) => {
-      const feedItems = prev.contents.filter((c) => c.format !== "story");
-      const storyItems = prev.contents.filter((c) => c.format === "story");
-
-      const sourceIndex = feedItems.findIndex((c) => c.id === sourceId);
-      const targetIndex = feedItems.findIndex((c) => c.id === targetId);
-
-      if (sourceIndex === -1 || targetIndex === -1) return prev;
-
-      const reordered = [...feedItems];
-      const [moved] = reordered.splice(sourceIndex, 1);
-      reordered.splice(targetIndex, 0, moved);
-
-      // Renumera os posts estritamente de 1 até o total existente (máx 8)
-      const updatedFeed = reordered.slice(0, 8).map((item, idx) => ({
-        ...item,
-        postNumber: idx + 1,
-      }));
-
-      // Sincroniza a renumeração com o Supabase
-      fetch("/api/contents/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: updatedFeed.map((item) => ({ id: item.id, postNumber: item.postNumber })),
-        }),
-      }).catch(console.error);
-
-      return {
-        ...prev,
-        contents: [...updatedFeed, ...storyItems],
-      };
+    const before = workspace.contents;
+    const feedItems = before.filter((content) => content.format !== "story");
+    const storyItems = before.filter((content) => content.format === "story");
+    const sourceIndex = feedItems.findIndex((content) => content.id === sourceId);
+    const targetIndex = feedItems.findIndex((content) => content.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+    const reordered = [...feedItems];
+    const [moved] = reordered.splice(sourceIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    const updatedFeed = reordered.slice(0, 8).map((item, index) => ({ ...item, postNumber: index + 1 }));
+    setWorkspace((current) => ({ ...current, contents: [...updatedFeed, ...storyItems] }));
+    checkedApi("/api/contents/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: updatedFeed.map((item) => ({ id: item.id, postNumber: item.postNumber })) }),
+    }).catch((error) => {
+      setWorkspace((current) => ({ ...current, contents: before }));
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível reordenar os posts.");
     });
+  }
+
+  function moveFeed(id: string, direction: -1 | 1) {
+    const index = visibleFeed.findIndex((item) => item.id === id);
+    const target = visibleFeed[index + direction];
+    if (target) reorderFeed(id, target.id);
   }
 
   function monthName(key: string) {
@@ -207,7 +217,7 @@ export default function Portal({
   function copyClientLink() {
     const current = clientsList.find((c) => c.id === clientId);
     const demoClient = demoClients.find((c) => c.id === clientId);
-    const token = clientToken || (current as any)?.access_token || demoClient?.accessToken;
+    const token = clientToken || (current as any)?.access_token || (process.env.NODE_ENV === "production" ? undefined : demoClient?.accessToken);
     if (!token) {
       alert("Token de acesso exclusivo ainda não disponível para este cliente.");
       return;
@@ -230,7 +240,7 @@ export default function Portal({
     const name = window.prompt("Nome do novo cliente:");
     if (!name || !name.trim()) return;
     try {
-      const res = await fetch("/api/clients", {
+      const res = await apiFetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim() }),
@@ -270,6 +280,18 @@ export default function Portal({
     if (!create && !monthKeys.includes(nextKey)) return;
     if (nextKey === activeMonthKey) { setNewMonthOpen(false); return; }
 
+    if (create) {
+      try {
+        await checkedApi("/api/workspace/month", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, monthKey: nextKey }),
+        });
+      } catch (error) {
+        setSyncFeedback(error instanceof Error ? error.message : "Não foi possível criar o mês.");
+        return;
+      }
+    }
+
     setWorkspace((prev) => {
       const currentKey = prev.monthKey ?? "2026-09";
       const months = {
@@ -296,18 +318,6 @@ export default function Portal({
         nextPostNumber: target.nextPostNumber ?? 1,
       };
     });
-
-    if (create) {
-      try {
-        await fetch("/api/workspace/month", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, monthKey: nextKey }),
-        });
-      } catch (err) {
-        console.error("Erro ao persistir novo mês no servidor:", err);
-      }
-    }
 
     setSelectedId(null);
     setNewOpen(false);
@@ -349,7 +359,7 @@ export default function Portal({
     async function syncCloud() {
       try {
         if (!availableClients && !fixedClient) {
-          const resClients = await fetch("/api/clients");
+          const resClients = await apiFetch("/api/clients");
           if (resClients.ok) {
             const all = await resClients.json();
             if (active && all && all.length > 0) {
@@ -357,10 +367,12 @@ export default function Portal({
             }
           }
         }
-        const resWs = await fetch(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
+        const resWs = await apiFetch(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
         if (resWs.ok) {
           const cloudData = await resWs.json();
           if (active && cloudData) {
+            setCloudLoadedWorkspace(`${clientId}:${activeMonthKey}`);
+            setWorkspaceError(null);
             setWorkspaces((prev) => {
               const prevWs = prev[clientId];
               const mergedMonths = {
@@ -376,9 +388,12 @@ export default function Portal({
               };
             });
           }
+        } else if (active) {
+          setWorkspaceError("Não foi possível carregar os dados deste cliente. Atualize a página para tentar novamente.");
         }
       } catch (err) {
-        console.warn("Sync com backend falhou, usando dados locais:", err);
+        console.warn("Sync com backend falhou:", err);
+        if (active) setWorkspaceError("Conexão indisponível. Atualize a página para tentar novamente.");
       }
     }
     syncCloud();
@@ -394,7 +409,7 @@ export default function Portal({
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved) as { clientId?: string; role?: Role };
-        if (!initialClientId && parsed?.clientId && (demoClients.some((client) => client.id === parsed.clientId) || clientsList.some(c => c.id === parsed.clientId))) {
+        if (!initialClientId && parsed?.clientId && (clientsList.some(c => c.id === parsed.clientId) || (process.env.NODE_ENV !== "production" && demoClients.some((client) => client.id === parsed.clientId)))) {
           setClientId(parsed.clientId);
         }
         if (!initialRole && (parsed?.role === "equipe" || parsed?.role === "cliente")) {
@@ -461,22 +476,13 @@ export default function Portal({
       const { uploadFileToStorage } = await import("@/lib/cloudStorage");
       const logoUrl = await uploadFileToStorage(file, `logos/${clientId}-${Date.now()}-${file.name}`);
 
+      await checkedApi("/api/clients/logo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, logo_url: logoUrl, logo_scale: 100, logo_offset_x: 0, logo_offset_y: 0, logo_border: false }),
+      });
       setWorkspace((prev) => ({ ...prev, logoFileId: logoUrl, logoScale: 100, logoOffsetX: 0, logoOffsetY: 0, logoBorder: false }));
       setLogoDraft({ scale: 100, x: 0, y: 0, border: false });
       setLogoEditorOpen(true);
-
-      await fetch("/api/clients/logo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          logo_url: logoUrl,
-          logo_scale: 100,
-          logo_offset_x: 0,
-          logo_offset_y: 0,
-          logo_border: false,
-        }),
-      });
     } catch (err) {
       console.error("Erro ao fazer upload da logo:", err);
       setLogoError("Não foi possível salvar a logo.");
@@ -490,6 +496,48 @@ export default function Portal({
     .sort((a, b) => (a.postNumber ?? 0) - (b.postNumber ?? 0));
   const visibleStories = storyContents.filter((content) => role === "equipe" || content.status !== "producao");
   const displayedFeed = pendingOnly ? visibleFeed.filter(content => content.status === "aguardando") : visibleFeed;
+  const simulatedFeed = instaScope === "mes"
+    ? visibleFeed.map((content) => ({ monthKey: activeMonthKey, content }))
+    : allFeed;
+
+  async function showAllFeed() {
+    setInstaScope("todos");
+    setAllFeedLoading(true);
+    setAllFeedError("");
+    try {
+      const entries = await Promise.all(monthKeys.map(async (monthKey) => {
+        if (monthKey === activeMonthKey) return { monthKey, contents: workspace.contents };
+        const response = await checkedApi(`/api/workspace?clientId=${encodeURIComponent(clientId)}&monthKey=${monthKey}`);
+        const data = await response.json() as Workspace;
+        return { monthKey, contents: data.contents };
+      }));
+      setAllFeed(entries.flatMap(({ monthKey, contents }) => contents
+        .filter((content) => content.format !== "story" && content.status !== "producao")
+        .map((content) => ({ monthKey, content })))
+        .sort((a, b) => b.content.date.localeCompare(a.content.date) || b.monthKey.localeCompare(a.monthKey) || (b.content.postNumber ?? 0) - (a.content.postNumber ?? 0)));
+    } catch (error) {
+      setAllFeedError(error instanceof Error ? error.message : "Não foi possível carregar todos os meses.");
+    } finally {
+      setAllFeedLoading(false);
+    }
+  }
+
+  function openSimulatedContent(id: string, monthKey: string) {
+    setInstaFeedOpen(false);
+    if (monthKey === activeMonthKey) {
+      openDetail(id);
+    } else {
+      setPendingDetail({ id, monthKey });
+      void switchMonth(monthKey);
+    }
+  }
+
+  useEffect(() => {
+    if (pendingDetail && activeMonthKey === pendingDetail.monthKey && workspace.contents.some((item) => item.id === pendingDetail.id)) {
+      setSelectedId(pendingDetail.id);
+      setPendingDetail(null);
+    }
+  }, [pendingDetail, activeMonthKey, workspace.contents]);
   const pendingCount = visibleFeed.filter(content => content.status === "aguardando").length;
   const selected = workspace.contents.find((content) => content.id === selectedId) ?? null;
   const currentList = selected?.format === "story" ? visibleStories : visibleFeed;
@@ -515,69 +563,53 @@ export default function Portal({
   }
 
   function updateContent(id: string, transform: (content: Content) => Content) {
-    setWorkspace((prev) => {
-      let updatedItem: Content | undefined;
-      const nextContents = prev.contents.map((content) => {
-        if (content.id !== id) return content;
-        const updated = transform(content);
-        if (updated.format === "story" || updated.postNumber) {
-          updatedItem = updated;
-          return updated;
-        }
-        const nextNumber = Math.max(prev.nextPostNumber ?? 1, prev.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1);
-        updatedItem = { ...updated, postNumber: nextNumber };
-        return updatedItem;
-      });
-      if (updatedItem) {
-        fetch("/api/contents", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ clientId, monthKey: activeMonthKey, content: updatedItem }),
-        }).catch(console.error);
-      }
-      return { ...prev, contents: nextContents };
+    const before = workspace.contents.find((content) => content.id === id);
+    if (!before) return;
+    const transformed = transform(before);
+    const nextNumber = Math.max(workspace.nextPostNumber ?? 1, workspace.contents.reduce((max, item) => Math.max(max, item.postNumber ?? 0), 0) + 1);
+    const updated = transformed.format === "story" || transformed.postNumber ? transformed : { ...transformed, postNumber: nextNumber };
+    setWorkspace((current) => ({ ...current, contents: current.contents.map((content) => content.id === id ? updated : content) }));
+    checkedApi("/api/contents", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, monthKey: activeMonthKey, content: updated }),
+    }).catch((error) => {
+      setWorkspace((current) => ({ ...current, contents: current.contents.map((content) => content.id === id ? before : content) }));
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível salvar o post.");
     });
   }
 
-  function actionOnContent(id: string, status: ContentStatus, action: string, note?: string, author?: string) {
+  async function actionOnContent(id: string, status: ContentStatus, action: string, note?: string, author?: string): Promise<boolean> {
     const effectiveAuthor = author || (role === "cliente" ? "Cliente" : "Equipe Nurea");
     const tempId = uid();
-    updateContent(id, (content) => ({
-      ...content,
-      status,
-      activity: [{ id: tempId, author: effectiveAuthor, action, note, at: todayStamp(), version: content.version }, ...content.activity],
-    }));
-    fetch("/api/contents/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contentId: id,
-        clientId,
-        monthKey: activeMonthKey,
-        status,
-        action,
-        note,
-        author: effectiveAuthor,
-        version: selected?.version || 1,
-      }),
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          const data = await res.json();
-          if (data.activityId) {
-            updateContent(id, (content) => ({
-              ...content,
-              activity: content.activity.map((a) => (a.id === tempId ? { ...a, id: data.activityId } : a)),
-            }));
-          }
-        }
-      })
-      .catch(console.error);
+    const before = workspace.contents.find((content) => content.id === id);
+    if (!before) return false;
+    setWorkspace((current) => ({ ...current, contents: current.contents.map((content) => content.id === id
+      ? { ...content, status, activity: [{ id: tempId, author: effectiveAuthor, action, note, at: todayStamp(), version: content.version }, ...content.activity] }
+      : content) }));
+    try {
+      const response = await checkedApi("/api/contents/action", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentId: id, clientId, monthKey: activeMonthKey, status, action, note, author: effectiveAuthor, version: selected?.version || 1 }),
+      });
+      const data = await response.json();
+      if (data.activityId) setWorkspace((current) => ({ ...current, contents: current.contents.map((content) => content.id === id
+        ? { ...content, activity: content.activity.map((item) => item.id === tempId ? { ...item, id: data.activityId } : item) }
+        : content) }));
+      return true;
+    } catch (error) {
+      setWorkspace((current) => ({ ...current, contents: current.contents.map((content) => content.id === id ? before : content) }));
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível salvar esta ação.");
+      return false;
+    }
   }
 
   async function createContent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newTitle.trim() || !newDate || newSaving) return;
+    if (workspace.plan.status !== "aprovado") {
+      setNewMediaError("Aprove o planejamento deste mês antes de iniciar a produção dos posts.");
+      return;
+    }
     if (newFormat !== "story" && feedContents.length >= 8) {
       setNewMediaError("Limite de 8 posts no feed atingido para este mês. Exclua um post para adicionar outro, ou crie um Story.");
       return;
@@ -593,7 +625,9 @@ export default function Portal({
         try {
           const { uploadFileToStorage } = await import("@/lib/cloudStorage");
           fileUrl = await uploadFileToStorage(file, `posts/${clientId}-${Date.now()}-${file.name}`);
-        } catch {}
+        } catch (error) {
+          if (process.env.NODE_ENV === "production") throw error;
+        }
         const id = uid();
         if (!fileUrl) {
           await saveLocalFile(id, file);
@@ -637,6 +671,16 @@ export default function Portal({
       attachments: savedMedia,
       ...(newFormat === "carrossel" ? { slides: [newTitle.trim()] } : {}),
     };
+    try {
+      await checkedApi("/api/contents", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, monthKey: activeMonthKey, content }),
+      });
+    } catch (error) {
+      setNewMediaError(error instanceof Error ? error.message : "Não foi possível criar o conteúdo.");
+      setNewSaving(false);
+      return;
+    }
     setWorkspace((prev) => {
       const nextContents = [...prev.contents, content];
       const feed = nextContents
@@ -654,22 +698,22 @@ export default function Portal({
     setView(newFormat === "story" ? "stories" : "feed");
     requestAnimationFrame(() => openDetail(content.id));
 
-    fetch("/api/contents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, monthKey: activeMonthKey, content }),
-    }).catch(console.error);
   }
 
   function updatePlan(status: Workspace["plan"]["status"], action: string, note?: string) {
+    if (role === "equipe" && status === "aguardando" && !workspace.plan.file) {
+      setSyncFeedback("Adicione o planejamento do cliente antes de enviá-lo.");
+      return;
+    }
+    const before = workspace.plan;
     setWorkspace((prev) => {
-      const nextVersion = prev.plan.status !== status ? prev.plan.version + 1 : prev.plan.version;
+      const nextVersion = prev.plan.version;
       const activity: import("@/lib/demo").Activity = { id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: nextVersion };
       return { ...prev, plan: { ...prev.plan, status, version: nextVersion, activity: [activity, ...prev.plan.activity] } };
     });
     setPlanAdjustOpen(false);
     setPlanAdjustText("");
-    fetch("/api/plan", {
+    checkedApi("/api/plan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -680,7 +724,83 @@ export default function Portal({
         author: role === "cliente" ? "Cliente" : "Equipe Nurea",
         note,
       }),
-    }).catch(console.error);
+    }).catch((error) => {
+      setWorkspace((current) => ({ ...current, plan: before }));
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível salvar o planejamento.");
+    });
+  }
+
+  function changePlanFile(update: (plan: Workspace["plan"]) => Workspace["plan"]) {
+    const before = workspace.plan;
+    const nextPlan = update(before);
+    setWorkspace((current) => ({ ...current, plan: nextPlan }));
+    checkedApi("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId, monthKey: activeMonthKey, status: nextPlan.status,
+        action: nextPlan.activity[0]?.action || "Planejamento atualizado",
+        author: "Equipe Nurea", fileUrl: nextPlan.file?.url ?? null,
+        fileName: nextPlan.file?.name ?? null,
+        exampleRemoved: nextPlan.exampleRemoved ?? false,
+      }),
+    }).catch((error) => {
+      setWorkspace((current) => ({ ...current, plan: before }));
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível salvar o arquivo do planejamento.");
+    });
+  }
+
+  async function removeLogo() {
+    if (!window.confirm("Remover a logo deste cliente?")) return;
+    try {
+      await checkedApi("/api/clients/logo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, logo_url: null }),
+      });
+      setWorkspace((current) => ({ ...current, logoFileId: undefined }));
+      closeLogo();
+    } catch (error) {
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível remover a logo.");
+    }
+  }
+
+  async function applyLogoFrame() {
+    const roundedScale = Math.round(logoDraft.scale);
+    const roundedX = Math.round(logoDraft.x);
+    const roundedY = Math.round(logoDraft.y);
+    try {
+      await checkedApi("/api/clients/logo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, logo_scale: roundedScale, logo_offset_x: roundedX, logo_offset_y: roundedY, logo_border: logoDraft.border }),
+      });
+      setWorkspace((current) => ({ ...current, logoScale: roundedScale, logoOffsetX: roundedX, logoOffsetY: roundedY, logoBorder: logoDraft.border }));
+      closeLogo();
+    } catch (error) {
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível aplicar o enquadramento.");
+    }
+  }
+
+  async function deleteSelectedContent() {
+    if (!selected) return;
+    if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return;
+    try {
+      await checkedApi(`/api/contents?id=${encodeURIComponent(selected.id)}`, { method: "DELETE" });
+      const remaining = workspace.contents.filter((item) => item.id !== selected.id);
+      const feed = remaining.filter((item) => item.format !== "story");
+      const stories = remaining.filter((item) => item.format === "story");
+      const updatedFeed = feed.slice(0, 8).map((item, index) => ({ ...item, postNumber: index + 1 }));
+      setWorkspace((current) => ({ ...current, contents: [...updatedFeed, ...stories] }));
+      closeDetail();
+      if (selected.format !== "story") {
+        await checkedApi("/api/contents/reorder", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: updatedFeed.map((item) => ({ id: item.id, postNumber: item.postNumber })) }),
+        });
+      }
+    } catch (error) {
+      await syncFromCloud();
+      setSyncFeedback(error instanceof Error ? error.message : "Não foi possível excluir o post.");
+    }
   }
 
   async function syncFromCloud() {
@@ -688,7 +808,7 @@ export default function Portal({
     setSyncFeedback(null);
     try {
       if (!availableClients && !fixedClient) {
-        const resClients = await fetch("/api/clients");
+        const resClients = await apiFetch("/api/clients");
         if (resClients.ok) {
           const all = await resClients.json();
           if (all && all.length > 0) {
@@ -696,13 +816,9 @@ export default function Portal({
           }
         }
       }
-      const resWs = await fetch(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
-      if (resWs.ok) {
-        const cloudData = await resWs.json();
-        if (cloudData) {
-          setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
-        }
-      }
+      const resWs = await checkedApi(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
+      const cloudData = await resWs.json();
+      if (cloudData) setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
       setSyncFeedback("✓ Sincronizado com a nuvem!");
       setTimeout(() => setSyncFeedback(null), 3500);
     } catch (err) {
@@ -730,9 +846,19 @@ export default function Portal({
     setTimeout(() => setSyncFeedback(null), 5000);
   }
 
+  if (process.env.NODE_ENV === "production" && cloudLoadedWorkspace !== `${clientId}:${activeMonthKey}`) {
+    return <main className="portal-loading" role="status">
+      <img src="/brand/logopng1.svg" alt="Nurea" width="150" height="44" />
+      <h1>{workspaceError ? "Não foi possível abrir este espaço" : "Preparando seu espaço"}</h1>
+      <p>{workspaceError || "Carregando os conteúdos e o planejamento…"}</p>
+      {workspaceError && <button className="primary-button" onClick={() => window.location.reload()}>Tentar novamente</button>}
+    </main>;
+  }
+
   return (
     <div className="portal-shell">
       <a className="skip-link" href="#conteudo">Pular para o conteúdo</a>
+      {syncFeedback && <div className="portal-feedback" role="alert">{syncFeedback}<button type="button" onClick={() => setSyncFeedback(null)} aria-label="Dispensar aviso"><X size={14} /></button></div>}
       <aside inert={!!selected} className={`sidebar ${menuOpen ? "sidebar-open" : ""}`} aria-label="Navegação principal">
         <div className="sidebar-head">
           <div className="brand">
@@ -773,7 +899,7 @@ export default function Portal({
                 className="restore-button"
                 onClick={async () => {
                   if (!window.confirm("Deseja sair do painel de administração?")) return;
-                  await fetch("/api/admin/logout", { method: "POST" });
+                  await apiFetch("/api/admin/logout", { method: "POST" });
                   window.location.reload();
                 }}
                 style={{ color: "#e89980", cursor: "pointer" }}
@@ -791,7 +917,7 @@ export default function Portal({
                 <RefreshCw size={13} className={syncingCloud ? "spinning" : ""} />{" "}
                 {syncingCloud ? "Sincronizando..." : "Sincronizar nuvem"}
               </button>
-              <button
+              {process.env.NODE_ENV !== "production" && <button
                 type="button"
                 className="restore-button"
                 onClick={() => {
@@ -802,7 +928,7 @@ export default function Portal({
                 title="Abre confirmação para restaurar exemplos locais"
               >
                 <RotateCcw size={12} /> Restaurar demonstração local
-              </button>
+              </button>}
               {syncFeedback && (
                 <div style={{ fontSize: "10px", color: "#a5d6a7", padding: "4px 8px", background: "#ffffff0f", borderRadius: "6px", marginTop: "4px", lineHeight: 1.4 }}>
                   {syncFeedback}
@@ -864,7 +990,7 @@ export default function Portal({
               </div>)}
             </div>
             </details>
-            <div className="feed-toolbar"><button className={`pending-filter ${pendingOnly ? "active" : ""}`} aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>{pendingCount ? `${pendingCount} para aprovar` : "Nenhuma aprovação pendente"}{pendingOnly && " · Ver todos"}</button><div>{role === "equipe" && <button className="primary-button" disabled={feedContents.length >= 8} title={feedContents.length >= 8 ? "Limite máximo de 8 posts atingido para este mês" : undefined} onClick={() => { if (feedContents.length >= 8) { alert("Este cliente já atingiu o limite de 8 posts no feed para este mês. Exclua um post para adicionar outro, ou crie um Story."); return; } setNewFormat("arte"); setNewDate(`${activeMonthKey}-01`); setNewOpen(true); }}><Plus size={17} /> {feedContents.length >= 8 ? "Feed completo (8/8)" : "Novo conteúdo"}</button>}<button className="stories-shortcut" onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <ArrowRight size={14} /></button></div></div>
+            <div className="feed-toolbar"><button className={`pending-filter ${pendingOnly ? "active" : ""}`} aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>{pendingCount ? `${pendingCount} para aprovar` : "Nenhuma aprovação pendente"}{pendingOnly && " · Ver todos"}</button><div>{role === "equipe" && <button className="primary-button" disabled={feedContents.length >= 8 || workspace.plan.status !== "aprovado"} title={workspace.plan.status !== "aprovado" ? "Aprove o planejamento antes de produzir conteúdos" : feedContents.length >= 8 ? "Limite máximo de 8 posts atingido para este mês" : undefined} onClick={() => { if (feedContents.length >= 8) { alert("Este cliente já atingiu o limite de 8 posts no feed para este mês. Exclua um post para adicionar outro, ou crie um Story."); return; } setNewFormat("arte"); setNewDate(`${activeMonthKey}-01`); setNewOpen(true); }}><Plus size={17} /> {feedContents.length >= 8 ? "Feed completo (8/8)" : "Novo conteúdo"}</button>}<button className="stories-shortcut" onClick={() => navigate("stories")}><span className="story-nav-icon" /> Stories <ArrowRight size={14} /></button></div></div>
             {role === "equipe" && <div className="team-note"><strong>Visão da equipe</strong><span>Itens em preparação são visíveis apenas aqui. Arraste qualquer card para mudar sua posição e reordenar automaticamente a numeração do feed (máx. 8 posts).</span></div>}
             <div className="section-heading">
               <div>
@@ -899,7 +1025,7 @@ export default function Portal({
                 </button>
               </div>
             </div>
-            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span></div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button></div>)}</div>}
+            {feedMode === "grid" ? <div className="feed-grid">{displayedFeed.map((content) => <article key={content.id} className={`feed-card feed-state-${content.status} ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><div className="feed-card-meta"><strong className="feed-post-number">{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={13} /></span>}POST <span>{content.postNumber}</span></strong><span className="feed-post-date">{formatDate(content.date)}</span><span className="feed-card-format">{formatLabel[content.format]}</span>{role === "equipe" && <span className="feed-order-controls"><button type="button" onClick={() => moveFeed(content.id, -1)} disabled={visibleFeed[0]?.id === content.id} aria-label={`Mover POST ${content.postNumber} para a esquerda`}><ChevronLeft size={14} /></button><button type="button" onClick={() => moveFeed(content.id, 1)} disabled={visibleFeed[visibleFeed.length - 1]?.id === content.id} aria-label={`Mover POST ${content.postNumber} para a direita`}><ArrowRight size={14} /></button></span>}</div><button className="feed-tile" onClick={(event) => openDetail(content.id, event.currentTarget)} aria-label={`Abrir POST ${content.postNumber}, ${formatLabel[content.format]}: ${content.title}, ${statusLabel[content.status]}`}><MediaPreview content={content} brand={workspace.clientName} mode="grid" /><span className={`tile-status tile-${content.status}`} title={statusLabel[content.status]} aria-hidden="true">{content.status === "aprovado" ? <CheckCircle2 size={14} /> : <i />}{shortStatus[content.status]}</span><span className="tile-overlay"><strong>{content.title}</strong><small>{statusLabel[content.status]} · {formatDate(content.date)}</small></span></button></article>)}</div> : <div className="content-list">{displayedFeed.map((content) => <div key={content.id} className={`content-list-item ${role === "equipe" ? "feed-card-draggable" : ""} ${draggedId === content.id ? "feed-card-dragging" : ""} ${dragOverId === content.id ? "feed-card-dragover" : ""}`} draggable={role === "equipe"} onDragStart={(e) => { if (role !== "equipe") return; setDraggedId(content.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", content.id); }} onDragOver={(e) => { if (role !== "equipe" || !draggedId || draggedId === content.id) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dragOverId !== content.id) setDragOverId(content.id); }} onDragLeave={(e) => { if (dragOverId === content.id) setDragOverId(null); }} onDrop={(e) => { e.preventDefault(); setDragOverId(null); const sourceId = draggedId || e.dataTransfer.getData("text/plain"); setDraggedId(null); if (!sourceId || sourceId === content.id) return; reorderFeed(sourceId, content.id); }} onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}><button className="content-list-row" onClick={(event) => openDetail(content.id, event.currentTarget)}>{role === "equipe" && <span className="feed-drag-handle" title="Arraste para reposicionar o post"><GripVertical size={16} /></span>}<span className="list-thumb"><MediaPreview content={content} brand={workspace.clientName} mode="list" /></span><span className="list-copy"><strong>POST {content.postNumber} · {content.title}</strong><small>{formatLabel[content.format]} · {formatDate(content.date)}</small></span><StatusBadge status={content.status} /><ArrowRight size={18} className="list-arrow" /></button>{role === "equipe" && <div className="list-order-controls"><button type="button" onClick={() => moveFeed(content.id, -1)} disabled={visibleFeed[0]?.id === content.id} aria-label={`Mover POST ${content.postNumber} para cima`}>Subir</button><button type="button" onClick={() => moveFeed(content.id, 1)} disabled={visibleFeed[visibleFeed.length - 1]?.id === content.id} aria-label={`Mover POST ${content.postNumber} para baixo`}>Descer</button></div>}</div>)}</div>}
             {displayedFeed.length === 0 && <div className="empty-state">{pendingOnly ? "Tudo revisado. Não há posts aguardando sua aprovação." : "Nenhum conteúdo disponível neste mês."}{pendingOnly && <button className="text-button" onClick={() => setPendingOnly(false)}>Ver feed completo</button>}</div>}
             <div className="feed-footer"><span><span className="footer-line" /> CONSTRUINDO UMA PRESENÇA COM PROPÓSITO</span><button onClick={() => navigate("stories")}>Ver Stories <ArrowRight size={17} /></button></div>
           </>}
@@ -917,12 +1043,12 @@ export default function Portal({
             <div className="eyebrow">DIREÇÃO DO MÊS <span>·</span> {workspace.month.toUpperCase()}</div>
             <div className="page-heading"><div><h1>Planejamento <em>editorial.</em></h1><p>O documento que orienta o mês, sempre à mão para consulta.</p></div></div>
             <div className="plan-toolbar"><div><FileText size={20} /><div><strong>Planejamento editorial · {workspace.month}</strong><small>{`${workspace.plan.file?.name ?? (activeMonthKey === "2026-09" && !workspace.plan.exampleRemoved ? "Exemplo ilustrativo" : "Sem arquivo")} · versão ${workspace.plan.version}`}</small></div></div><StatusBadge status={workspace.plan.status} /></div>
-            <div className="plan-layout"><PlanDocument key={`${clientId}-${activeMonthKey}`} plan={workspace.plan} monthKey={activeMonthKey} team={role === "equipe"} onChange={update => { setWorkspace(prev => { if ((prev.monthKey ?? "2026-09") !== activeMonthKey) return prev; const nextPlan = update(prev.plan); fetch("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, monthKey: activeMonthKey, status: nextPlan.status, action: nextPlan.activity?.[0]?.action || "Planejamento atualizado", author: role === "cliente" ? "Cliente" : "Equipe Nurea", fileUrl: nextPlan.file?.url, fileName: nextPlan.file?.name }) }).catch(console.error); return { ...prev, plan: nextPlan }; }); }} /><aside className="plan-side"><div className="plan-side-card"><span className="section-kicker">STATUS DO DOCUMENTO</span><h3>{planStatusLabel[workspace.plan.status]}</h3><p>{workspace.plan.status === "rascunho" ? "A equipe ainda não enviou o planejamento deste mês." : "Confira o documento antes de aprovar. A aprovação do planejamento não aprova os posts individualmente."}</p>{role === "cliente" && workspace.plan.status === "aguardando" && <div className="plan-actions"><button className="primary-button" onClick={() => updatePlan("aprovado", "Planejamento aprovado")}><Check size={17} /> Aprovar planejamento</button><button className="outline-button" onClick={() => setPlanAdjustOpen(true)}><MessageCircle size={17} /> Pedir ajuste</button></div>}{role === "equipe" && (workspace.plan.status === "ajuste" || workspace.plan.status === "rascunho") && !!(workspace.plan.file || (activeMonthKey === "2026-09" && !workspace.plan.exampleRemoved)) && <button className="primary-button" onClick={() => updatePlan("aguardando", "Planejamento reenviado para aprovação")}>Enviar para aprovação</button>}{role === "equipe" && workspace.plan.status === "aprovado" && <p className="plan-side-hint"><CheckCircle2 size={16} /> Planejamento aprovado. Uma nova versão deverá ter aprovação própria.</p>}</div><div className="plan-side-card"><span className="section-kicker">HISTÓRICO</span>{workspace.plan.activity.length ? workspace.plan.activity.map((activity) => <div className="activity-item" key={activity.id}><span className="activity-mark" /><div><strong>{activity.action}</strong><small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>{activity.note && <p>{activity.note}</p>}</div></div>) : <p>Nenhuma ação registrada.</p>}</div></aside></div>
+            <div className="plan-layout"><PlanDocument key={`${clientId}-${activeMonthKey}`} plan={workspace.plan} monthKey={activeMonthKey} team={role === "equipe"} onChange={changePlanFile} /><aside className="plan-side"><div className="plan-side-card"><span className="section-kicker">STATUS DO DOCUMENTO</span><h3>{planStatusLabel[workspace.plan.status]}</h3><p>{workspace.plan.status === "rascunho" ? "A equipe ainda não enviou o planejamento deste mês." : "Confira o documento antes de aprovar. A aprovação do planejamento não aprova os posts individualmente."}</p>{role === "cliente" && workspace.plan.status === "aguardando" && <div className="plan-actions"><button className="primary-button" onClick={() => updatePlan("aprovado", "Planejamento aprovado")}><Check size={17} /> Aprovar planejamento</button><button className="outline-button" onClick={() => setPlanAdjustOpen(true)}><MessageCircle size={17} /> Pedir ajuste</button></div>}{role === "equipe" && (workspace.plan.status === "ajuste" || workspace.plan.status === "rascunho") && !!workspace.plan.file && <button className="primary-button" onClick={() => updatePlan("aguardando", "Planejamento reenviado para aprovação")}>Enviar para aprovação</button>}{role === "equipe" && workspace.plan.status === "aprovado" && <p className="plan-side-hint"><CheckCircle2 size={16} /> Planejamento aprovado. Uma nova versão deverá ter aprovação própria.</p>}</div><div className="plan-side-card"><span className="section-kicker">HISTÓRICO</span>{workspace.plan.activity.length ? workspace.plan.activity.map((activity) => <div className="activity-item" key={activity.id}><span className="activity-mark" /><div><strong>{activity.action}</strong><small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>{activity.note && <p>{activity.note}</p>}</div></div>) : <p>Nenhuma ação registrada.</p>}</div></aside></div>
           </>}
         </main>
       </div>
 
-      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} clientLogo={logoUrl ?? undefined} clientSlug={clientId} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; const isStory = selected.format === "story"; setWorkspace(prev => { const remaining = prev.contents.filter(item => item.id !== toDeleteId); if (isStory) return { ...prev, contents: remaining }; const feed = remaining.filter(item => item.format !== "story"); const stories = remaining.filter(item => item.format === "story"); const renumberedFeed = feed.slice(0, 8).map((item, idx) => ({ ...item, postNumber: idx + 1 })); fetch("/api/contents/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: renumberedFeed.map(item => ({ id: item.id, postNumber: item.postNumber })) }) }).catch(console.error); return { ...prev, contents: [...renumberedFeed, ...stories] }; }); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note, author) => actionOnContent(selected.id, status, action, note, author)} />}
+      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} clientLogo={logoUrl ?? undefined} clientSlug={clientId} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={deleteSelectedContent} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onActivityAdded={(activity) => setWorkspace((current) => ({ ...current, contents: current.contents.map((item) => item.id === selected.id ? { ...item, activity: [activity, ...item.activity] } : item) }))} onAction={(status, action, note, author) => actionOnContent(selected.id, status, action, note, author)} />}
 
       {logoEditorOpen && <div className="logo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLogo(); }}>
         <section className="logo-modal" role="dialog" aria-modal="true" aria-labelledby="logo-modal-title">
@@ -950,8 +1076,8 @@ export default function Portal({
             <label htmlFor="logo-scale">Zoom <strong>{logoDraft.scale}%</strong></label>
             <input id="logo-scale" type="range" min="50" max="220" step="5" value={logoDraft.scale} onChange={(event) => setLogoDraft((draft) => ({ ...draft, scale: Number(event.target.value) }))} />
             <label className="logo-border-choice"><input type="checkbox" checked={logoDraft.border} onChange={(event) => setLogoDraft((draft) => ({ ...draft, border: event.target.checked }))} /> Mostrar aro dourado</label>
-            <button type="button" className="text-button danger-button" onClick={() => { if (window.confirm("Remover a logo deste cliente?")) { setWorkspace(prev => ({ ...prev, logoFileId: undefined })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_url: null }) }).catch(console.error); } }}>Remover logo</button><button type="button" className="text-button" onClick={() => setLogoDraft({ scale: 100, x: 0, y: 0, border: false })}>Restaurar enquadramento</button>
-            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={() => { const roundedScale = Math.round(logoDraft.scale); const roundedX = Math.round(logoDraft.x); const roundedY = Math.round(logoDraft.y); setWorkspace((prev) => ({ ...prev, logoScale: roundedScale, logoOffsetX: roundedX, logoOffsetY: roundedY, logoBorder: logoDraft.border })); closeLogo(); fetch("/api/clients/logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId, logo_scale: roundedScale, logo_offset_x: roundedX, logo_offset_y: roundedY, logo_border: logoDraft.border }) }).catch(console.error); }}>Aplicar enquadramento</button></div>
+            <button type="button" className="text-button danger-button" onClick={removeLogo}>Remover logo</button><button type="button" className="text-button" onClick={() => setLogoDraft({ scale: 100, x: 0, y: 0, border: false })}>Restaurar enquadramento</button>
+            <div className="logo-modal-actions"><button type="button" className="outline-button" onClick={closeLogo}>Cancelar</button><button type="button" className="primary-button" onClick={applyLogoFrame}>Aplicar enquadramento</button></div>
           </div>}
         </section>
       </div>}
@@ -1025,15 +1151,14 @@ export default function Portal({
                 </button>
                 <div className="insta-sim-title">
                   <span>{getInstagramHandle(workspace.clientName).replace("@", "")}</span>
-                  <CheckCircle2 size={13} color="#0095f6" fill="#0095f6" />
                 </div>
                 <div className="insta-sim-top-actions">
-                  <button type="button" aria-label="Notificações">
+                  <span aria-hidden="true">
                     <Bell size={20} />
-                  </button>
-                  <button type="button" aria-label="Mais opções">
+                  </span>
+                  <span aria-hidden="true">
                     <MoreHorizontal size={20} />
-                  </button>
+                  </span>
                 </div>
               </header>
 
@@ -1060,29 +1185,37 @@ export default function Portal({
                 </div>
               </div>
 
+              <div className="insta-sim-scope" aria-label="Período da prévia do feed">
+                <span>Prévia do feed</span>
+                <div className="insta-sim-scope-options">
+                  <button type="button" className={instaScope === "mes" ? "is-active" : ""} aria-pressed={instaScope === "mes"} onClick={() => setInstaScope("mes")}>Mês selecionado</button>
+                  <button type="button" className={instaScope === "todos" ? "is-active" : ""} aria-pressed={instaScope === "todos"} onClick={() => void showAllFeed()}>Todo o portal</button>
+                </div>
+              </div>
+
               {/* Instagram Profile Tabs */}
               <div className="insta-sim-tabs">
-                <button type="button" className="insta-sim-tab is-active" aria-label="Publicações">
+                <span className="insta-sim-tab is-active" aria-label="Publicações">
                   <Grid size={18} />
-                </button>
-                <button type="button" className="insta-sim-tab" aria-label="Reels">
+                </span>
+                <span className="insta-sim-tab" aria-label="Reels">
                   <Film size={18} />
-                </button>
-                <button type="button" className="insta-sim-tab" aria-label="Marcados">
+                </span>
+                <span className="insta-sim-tab" aria-label="Marcados">
                   <UserCheck size={18} />
-                </button>
+                </span>
               </div>
 
               {/* 3-Column Instagram Feed Grid */}
               <div className="insta-sim-scroll-area">
                 <div className="insta-sim-grid">
-                  {visibleFeed.map((content) => (
+                  {simulatedFeed.map(({ content, monthKey }) => (
                     <button
-                      key={content.id}
+                      key={`${monthKey}-${content.id}`}
                       type="button"
                       className="insta-sim-tile"
-                      onClick={() => openDetail(content.id)}
-                      aria-label={`Abrir POST ${content.postNumber}: ${content.title}`}
+                      onClick={() => openSimulatedContent(content.id, monthKey)}
+                      aria-label={`Abrir POST ${content.postNumber} de ${monthName(monthKey)}: ${content.title}`}
                     >
                       <MediaPreview content={content} brand={workspace.clientName} mode="grid" />
                       {content.format === "reels" && (
@@ -1098,8 +1231,10 @@ export default function Portal({
                     </button>
                   ))}
                 </div>
-                {visibleFeed.length === 0 && (
-                  <div className="insta-sim-empty">Nenhum post publicado no feed ainda.</div>
+                {allFeedLoading && instaScope === "todos" && <div className="insta-sim-empty" role="status">Carregando os meses…</div>}
+                {allFeedError && instaScope === "todos" && <div className="insta-sim-empty" role="alert">{allFeedError}</div>}
+                {!allFeedLoading && !allFeedError && simulatedFeed.length === 0 && (
+                  <div className="insta-sim-empty">Nenhum post disponível nesta prévia.</div>
                 )}
               </div>
 

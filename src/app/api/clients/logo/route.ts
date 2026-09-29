@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateClientLogoSettings } from "@/lib/db";
+import { requireAdmin } from "@/lib/apiAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const { clientId, ...settings } = await req.json();
 

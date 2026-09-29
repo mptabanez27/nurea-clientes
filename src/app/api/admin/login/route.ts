@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkAdminCredentials, getExpectedSessionToken } from "@/lib/auth";
+import { ADMIN_COOKIE, checkAdminCredentials, createAdminSession } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,13 +23,12 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({ success: true });
     
-    // Cookie de sessão por 30 dias
-    res.cookies.set("nurea_admin_session", getExpectedSessionToken(), {
+    res.cookies.set(ADMIN_COOKIE, createAdminSession(), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 dias
+      maxAge: 60 * 60 * 24 * 7,
     });
 
     return res;

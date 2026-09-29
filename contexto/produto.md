@@ -41,9 +41,9 @@ Um portal para a agência Nurea apresentar o planejamento mensal, mostrar os con
 
 Preparar o calendário para mês/ano correto, com dias da semana calculados, datas pesquisadas em fontes verificáveis e revisão humana. Separar feriado de data temática. Filtrar por segmento e região do cliente. O planejamento aprovado é uma versão congelada; mudanças geram nova versão.
 
-## Restrições atuais
+## Estado atual e restrições
 
-Esta primeira aplicação é **demonstração local**. Não contém autenticação, autorização real por cliente, banco de dados, armazenamento seguro de mídia nem integração com Instagram ou agente. Logo e anexos podem ser escolhidos na interface, mas ficam somente neste navegador. Não hospedar nem usar com conteúdo real de clientes até implementar esses pontos.
+O portal usa Next.js e Supabase com painel de equipe e links exclusivos por cliente. A autorização foi adicionada às rotas no código em 28/09/2026; a migração RLS precisa ser aplicada e conferida no Supabase implantado antes de ampliar o uso com dados reais. A grade Instagram é uma prévia visual, sem integração de publicação. O armazenamento ainda retorna URLs públicas de mídia e precisa de revisão antes de tratar arquivos como privados.
 
 
 
@@ -53,5 +53,12 @@ Esta primeira aplicação é **demonstração local**. Não contém autenticaç�
 - Barra fixa de ações: Aprovar post (prioritária enquanto aguarda aprovação), Pedir ajuste e Comentar. Aprovar altera imediatamente o card com selo, borda e superfície verde suave e atualiza a contagem. Comentários não alteram status; ajustes exigem texto e entram no histórico da versão.
 - Equipe edita título, categoria, formato, data, legenda, mídia, link publicado e compartilhamento em Story, inclusive após publicação. Pode remover/reordenar mídia, substituir arquivos, definir capa de vídeo principal ou anexo, remover anexos, excluir uma peça e remover a logo do cliente.
 - Alterações de conteúdo/arquivos criam versão em preparação e exigem reenvio/aprovação, inclusive em peças publicadas. Link e marca de compartilhamento são dados operacionais e não invalidam aprovação. O histórico de decisões permanece como registro.
-- Excluir uma peça não renumera as restantes nem reutiliza seu número na mesma sequência mensal.
-- Planejamento aceita imagem/PDF de até 20 MB por cliente/mês: adicionar, substituir, remover, baixar e enviar para aprovação. Trocar/remover invalida aprovação anterior e registra versão/atividade. Remover o exemplo é persistente: ele não reaparece ao recarregar. Arquivos continuam locais no IndexedDB; versões anteriores não têm restauração pela interface.
+- A reordenação e a exclusão mantêm a regra atual de renumerar a grade do mês; o usuário decidiu preservá-la nesta revisão.
+- Planejamento aceita imagem/PDF de até 20 MB por cliente/mês: adicionar, substituir, remover, baixar e enviar para aprovação. Trocar/remover invalida aprovação anterior e registra versão/atividade. O exemplo ilustrativo não pode ser enviado. Em produção, o arquivo é enviado ao Storage e sua referência é salva no banco; versões anteriores ainda não têm restauração pela interface.
+
+## Ajustes de fluxo — 28/09/2026
+
+- Mantemos a numeração de POST 1, POST 2 etc. e sua regra atual de reordenação, conforme a última orientação do usuário.
+- A prévia em grade da Studio Rose mostra `@studiorosebrighenti`. O seletor compacto oferece o mês escolhido ou os conteúdos disponíveis ao cliente em todos os meses do portal, em ordem de data mais recente; a seleção de uma peça de outro mês abre seu detalhe no ciclo correspondente. Isso não indica publicação no Instagram.
+- A equipe precisa anexar um documento real antes de enviar o planejamento. O exemplo ilustrativo nunca habilita o envio. A produção de novas peças começa após aprovação do planejamento.
+- Ações no histórico são corrigidas por novos eventos visíveis, sem apagar a decisão original.

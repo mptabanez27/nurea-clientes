@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteContentRecord, saveContentRecord } from "@/lib/db";
+import { getContentOwner, requireAdmin } from "@/lib/apiAuth";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const { clientId, monthKey, content } = await req.json();
 
@@ -12,6 +16,19 @@ export async function POST(req: NextRequest) {
         { error: "clientId, monthKey e content são obrigatórios." },
         { status: 400 }
       );
+    }
+
+    const existingOwner = content.id ? await getContentOwner(content.id) : null;
+    if (existingOwner && existingOwner !== clientId) {
+      return NextResponse.json({ error: "Conteúdo pertence a outro cliente." }, { status: 403 });
+    }
+    if (!existingOwner) {
+      const { data: cycle, error: cycleError } = await getSupabaseAdmin().from("month_cycles")
+        .select("plan_status").eq("client_id", clientId).eq("month_key", monthKey).maybeSingle();
+      if (cycleError) throw cycleError;
+      if (cycle?.plan_status !== "aprovado") {
+        return NextResponse.json({ error: "Aprove o planejamento antes de criar conteúdos neste mês." }, { status: 409 });
+      }
     }
 
     const savedId = await saveContentRecord(clientId, monthKey, content);
@@ -26,6 +43,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const id = req.nextUrl.searchParams.get("id");
 

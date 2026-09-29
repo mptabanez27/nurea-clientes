@@ -28,6 +28,7 @@ create table if not exists public.month_cycles (
   plan_version integer default 1 not null,
   plan_file_url text,
   plan_file_name text,
+  plan_example_removed boolean default false not null,
   next_post_number integer default 1 not null,
   created_at timestamptz default now() not null,
   unique(client_id, month_key)
@@ -71,18 +72,17 @@ alter table public.month_cycles enable row level security;
 alter table public.contents enable row level security;
 alter table public.activities enable row level security;
 
--- Políticas universais de leitura e escrita para API
+-- Toda leitura/escrita passa pelas rotas Next.js autenticadas com service role.
+-- Nunca exponha estas tabelas diretamente para anon/authenticated.
 drop policy if exists "Permitir tudo clients" on public.clients;
-create policy "Permitir tudo clients" on public.clients for all using (true) with check (true);
 
 drop policy if exists "Permitir tudo month_cycles" on public.month_cycles;
-create policy "Permitir tudo month_cycles" on public.month_cycles for all using (true) with check (true);
 
 drop policy if exists "Permitir tudo contents" on public.contents;
-create policy "Permitir tudo contents" on public.contents for all using (true) with check (true);
 
 drop policy if exists "Permitir tudo activities" on public.activities;
-create policy "Permitir tudo activities" on public.activities for all using (true) with check (true);
+
+revoke all on public.clients, public.month_cycles, public.contents, public.activities from anon, authenticated;
 
 -- 7. Cadastrar os 5 clientes de exemplo com tokens exclusivos
 insert into public.clients (id, name, access_token) values

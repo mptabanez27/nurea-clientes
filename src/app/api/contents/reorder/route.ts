@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/apiAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const { items } = await req.json();
 
@@ -23,7 +26,9 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    await Promise.all(updates);
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result?.error);
+    if (failed?.error) throw failed.error;
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
