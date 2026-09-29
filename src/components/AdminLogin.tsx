@@ -160,7 +160,7 @@ export default function AdminLogin() {
                 autoComplete="username"
                 value={user}
                 onChange={(e) => setUser(e.target.value)}
-                placeholder="marcos ou admin@agencianurea.com.br"
+                placeholder="admin@agencianurea.com.br"
                 required
                 style={{
                   width: "100%",
