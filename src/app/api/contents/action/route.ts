@@ -17,9 +17,15 @@ export async function POST(req: NextRequest) {
     if (clientId && monthKey) {
       await saveContentRecord(clientId, monthKey, { id: contentId, status } as any);
     }
-    await addActivityRecord(contentId, author || "Equipe Nurea", action || "Atualizou status", note, version || 1);
+    const activityId = await addActivityRecord(
+      contentId,
+      author || "Equipe Nurea",
+      action || "Atualizou status",
+      note,
+      version || 1
+    );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, activityId });
   } catch (err: any) {
     console.error("Erro ao registrar ação no conteúdo:", err);
     return NextResponse.json(

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Heart, MessageCircle, MoreHorizontal, Paperclip, Play, Plus, Send, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bookmark, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Download, FileText, Heart, MessageCircle, MoreHorizontal, Paperclip, Pencil, Play, Plus, Send, Trash2, X } from "lucide-react";
 import MediaPreview from "./MediaPreview";
 import { Attachment, Content, ContentFormat, ContentStatus, formatActivityDate, formatLabel, statusLabel, todayStamp } from "@/lib/demo";
 import { deleteLocalFile, getLocalFile, saveLocalFile } from "@/lib/localFiles";
@@ -19,7 +19,7 @@ type Props = {
   onDelete: () => void;
   onNavigate: (direction: -1 | 1) => void;
   onUpdate: (transform: (content: Content) => Content) => void;
-  onAction: (status: ContentStatus, action: string, note?: string) => void;
+  onAction: (status: ContentStatus, action: string, note?: string, author?: string) => void;
 };
 
 function uid() { return crypto.randomUUID(); }
@@ -85,6 +85,85 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const [coverEditorOpen, setCoverEditorOpen] = useState(false);
   const [coverDraft, setCoverDraft] = useState({ scale: 100, x: 0, y: 0 });
   const coverDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  // Estados de aprovação administrativa e edição de histórico
+  const [adminApproveOpen, setAdminApproveOpen] = useState(false);
+  const [adminApproveChannel, setAdminApproveChannel] = useState<"whatsapp" | "equipe">("whatsapp");
+  const [adminApproveNote, setAdminApproveNote] = useState("Cliente aprovou pelo WhatsApp sem alterações.");
+  const [commentAuthor, setCommentAuthor] = useState("Equipe Nurea");
+
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editActivityAuthor, setEditActivityAuthor] = useState("");
+  const [editActivityAction, setEditActivityAction] = useState("");
+  const [editActivityNote, setEditActivityNote] = useState("");
+
+  function handleAdminApprove() {
+    let action = "Conteúdo aprovado";
+    let author = "Equipe Nurea";
+    const note = adminApproveNote.trim() || undefined;
+
+    if (adminApproveChannel === "whatsapp") {
+      action = "Aprovado via WhatsApp";
+      author = "Cliente (via WhatsApp)";
+    } else {
+      action = "Conteúdo aprovado pela equipe";
+      author = "Equipe Nurea";
+    }
+
+    onAction("aprovado", action, note, author);
+    setAdminApproveOpen(false);
+    setAdjustOpen(false);
+    setFeedback("✓ Post aprovado com sucesso! Feed e status atualizados.");
+  }
+
+  async function handleSaveActivityEdit(activityId: string) {
+    if (!editActivityAuthor.trim() || !editActivityAction.trim()) return;
+    const author = editActivityAuthor.trim();
+    const action = editActivityAction.trim();
+    const note = editActivityNote.trim() || undefined;
+
+    onUpdate((current) => ({
+      ...current,
+      activity: current.activity.map((a) =>
+        a.id === activityId ? { ...a, author, action, note } : a
+      ),
+    }));
+
+    setEditingActivityId(null);
+    setFeedback("Registro do histórico atualizado.");
+
+    try {
+      await fetch("/api/activities", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityId,
+          author,
+          action,
+          note: note || "",
+        }),
+      });
+    } catch (err) {
+      console.error("Erro ao atualizar atividade no servidor:", err);
+    }
+  }
+
+  async function handleDeleteActivity(activityId: string) {
+    if (!window.confirm("Deseja realmente excluir este registro do histórico?")) return;
+    onUpdate((current) => ({
+      ...current,
+      activity: current.activity.filter((a) => a.id !== activityId),
+    }));
+    setFeedback("Registro removido do histórico.");
+
+    try {
+      await fetch(`/api/activities?id=${encodeURIComponent(activityId)}`, {
+        method: "DELETE",
+      });
+    } catch (err) {
+      console.error("Erro ao excluir atividade no servidor:", err);
+    }
+  }
 
   useEffect(() => { closeRef.current?.focus(); }, []);
   useEffect(() => {
@@ -662,20 +741,223 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
               
               {role === "cliente" && adjustOpen && <form className="adjust-form" onSubmit={requestAdjustment}><label htmlFor="adjust-text">O que precisamos mudar?</label><textarea id="adjust-text" value={adjustText} onChange={(event) => setAdjustText(event.target.value)} rows={4} required /><label htmlFor="adjust-target">Parte do conteúdo (opcional)</label><select id="adjust-target" value={adjustTarget} onChange={(event) => setAdjustTarget(event.target.value)}><option value="">Publicação em geral</option><option value="arte ou vídeo">Arte ou vídeo</option><option value="legenda">Legenda</option><option value="capa">Capa</option><option value="carrossel">Página do carrossel</option></select><div><button type="button" className="text-button" onClick={() => setAdjustOpen(false)}>Cancelar</button><button className="primary-button" type="submit"><Send size={16} /> Enviar pedido</button></div></form>}
               {role === "cliente" && content.status !== "aguardando" && <p className="action-message">{content.status === "ajuste" ? "Seu pedido de ajuste foi enviado. A Nurea preparará uma nova versão." : content.status === "producao" ? "Conteúdo em preparação." : "Esta publicação não requer ação agora."}</p>}
-              {role === "equipe" && !editOpen && <><button className="outline-button" onClick={startEdit}>Editar conteúdo e arquivos</button><button className="text-button danger-button" onClick={onDelete}>Excluir publicação</button>{(content.status === "producao" || content.status === "ajuste") && <button className="primary-button" onClick={() => onAction("aguardando", "Enviado para aprovação")}>Enviar para aprovação</button>}{content.status === "aprovado" && <button className="primary-button" onClick={() => onAction("agendado", "Agendamento registrado")}>Marcar agendado</button>}{content.status === "agendado" && <div className="publish-form"><label htmlFor="published-url">Link da publicação (opcional)</label><input id="published-url" type="url" value={publishUrl} onChange={(event) => setPublishUrl(event.target.value)} placeholder="https://www.instagram.com/p/..." /><button className="primary-button" onClick={() => { onUpdate((current) => ({ ...current, status: "publicado", publishedUrl: publishUrl.trim() || undefined, activity: [{ id: uid(), author: "Equipe Nurea", action: "Publicação confirmada", at: todayStamp(), version: current.version }, ...current.activity] })); setPublishUrl(""); }}>Confirmar publicação</button></div>}{content.status === "publicado" && content.format !== "story" && !content.sharedToStory && <button className="outline-button" onClick={() => onUpdate((current) => ({ ...current, sharedToStory: true, activity: [{ id: uid(), author: "Equipe Nurea", action: "Compartilhado no Story", at: todayStamp(), version: current.version }, ...current.activity] }))}>Marcar compartilhamento no Story</button>}</>}
+              {role === "equipe" && !editOpen && <>
+                <button className="outline-button" onClick={startEdit}>Editar conteúdo e arquivos</button>
+                <button className="text-button danger-button" onClick={onDelete}>Excluir publicação</button>
+                {(content.status === "producao" || content.status === "ajuste") && <button className="outline-button" onClick={() => onAction("aguardando", "Enviado para aprovação", undefined, "Equipe Nurea")}>Enviar para aprovação</button>}
+                {content.status !== "aprovado" && content.status !== "publicado" && content.status !== "agendado" && (
+                  <button
+                    type="button"
+                    className="primary-button approve-button"
+                    onClick={() => {
+                      setAdminApproveChannel("whatsapp");
+                      setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
+                      setAdminApproveOpen(true);
+                    }}
+                  >
+                    <CheckCircle2 size={16} /> Aprovar post (WhatsApp / Equipe)
+                  </button>
+                )}
+                {content.status === "aprovado" && (
+                  <>
+                    <button className="primary-button" onClick={() => onAction("agendado", "Agendamento registrado", undefined, "Equipe Nurea")}>Marcar agendado</button>
+                    <button className="outline-button" onClick={() => onAction("ajuste", "Reaberto para ajuste", undefined, "Equipe Nurea")}>Reabrir para ajuste</button>
+                    <button className="outline-button" onClick={() => onAction("aguardando", "Retornado para aprovação", undefined, "Equipe Nurea")}>Voltar para aprovação</button>
+                  </>
+                )}
+                {content.status === "agendado" && <div className="publish-form"><label htmlFor="published-url">Link da publicação (opcional)</label><input id="published-url" type="url" value={publishUrl} onChange={(event) => setPublishUrl(event.target.value)} placeholder="https://www.instagram.com/p/..." /><button className="primary-button" onClick={() => { onUpdate((current) => ({ ...current, status: "publicado", publishedUrl: publishUrl.trim() || undefined, activity: [{ id: uid(), author: "Equipe Nurea", action: "Publicação confirmada", at: todayStamp(), version: current.version }, ...current.activity] })); setPublishUrl(""); }}>Confirmar publicação</button></div>}
+                {content.status === "publicado" && content.format !== "story" && !content.sharedToStory && <button className="outline-button" onClick={() => onUpdate((current) => ({ ...current, sharedToStory: true, activity: [{ id: uid(), author: "Equipe Nurea", action: "Compartilhado no Story", at: todayStamp(), version: current.version }, ...current.activity] }))}>Marcar compartilhamento no Story</button>}
+              </>}
             </div>
-            {commentOpen && <form className="comment-form" onSubmit={event => { event.preventDefault(); if (!comment.trim()) return; onAction(content.status, "Comentário", comment.trim()); setComment(""); setCommentOpen(false); setFeedback("Comentário enviado."); }}><label htmlFor="post-comment">Seu comentário</label><textarea id="post-comment" value={comment} onChange={event => setComment(event.target.value)} rows={3} required autoFocus /><p>Comentar não altera a aprovação do post.</p><div><button type="button" className="text-button" onClick={() => setCommentOpen(false)}>Cancelar</button><button className="primary-button" type="submit">Enviar comentário</button></div></form>}
-            <div className="content-detail-history"><h4>Histórico</h4>{content.activity.length ? content.activity.map((activity) => <div className="activity-item" key={activity.id}><span className="activity-mark" /><div><strong>{activity.action}</strong><small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>{activity.note && <p>{activity.note}</p>}</div></div>) : <p className="detail-empty">Ainda não há interações.</p>}</div>
+            {commentOpen && (
+              <form className="comment-form" onSubmit={event => {
+                event.preventDefault();
+                if (!comment.trim()) return;
+                const author = role === "equipe" ? commentAuthor : "Cliente";
+                onAction(content.status, "Comentário", comment.trim(), author);
+                setComment("");
+                setCommentOpen(false);
+                setFeedback("Comentário registrado no histórico.");
+              }}>
+                <label htmlFor="post-comment">Seu comentário ou anotação</label>
+                {role === "equipe" && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#5a685e", display: "block", marginBottom: "4px" }}>Identificar autor:</span>
+                    <select
+                      value={commentAuthor}
+                      onChange={(e) => setCommentAuthor(e.target.value)}
+                      style={{ width: "100%", padding: "6px 8px", fontSize: "11px", borderRadius: "6px", border: "1px solid #dcd7cb", background: "#fff" }}
+                    >
+                      <option value="Equipe Nurea">Equipe Nurea (padrão)</option>
+                      <option value="Cliente (via WhatsApp)">Cliente (via WhatsApp)</option>
+                      <option value="Cliente">Cliente</option>
+                      <option value="Anotação interna">Anotação interna</option>
+                    </select>
+                  </div>
+                )}
+                <textarea id="post-comment" value={comment} onChange={event => setComment(event.target.value)} rows={3} required autoFocus />
+                <p>Comentar não altera a aprovação do post.</p>
+                <div>
+                  <button type="button" className="text-button" onClick={() => setCommentOpen(false)}>Cancelar</button>
+                  <button className="primary-button" type="submit">Enviar comentário</button>
+                </div>
+              </form>
+            )}
+            <div className="content-detail-history">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <h4>Histórico</h4>
+                {role === "equipe" && (
+                  <span style={{ fontSize: "9px", color: "#81998b", fontWeight: 600 }}>Admin: editar / excluir</span>
+                )}
+              </div>
+              {content.activity.length ? (
+                content.activity.map((activity) => {
+                  if (editingActivityId === activity.id) {
+                    return (
+                      <form
+                        key={activity.id}
+                        className="activity-inline-edit-box"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSaveActivityEdit(activity.id);
+                        }}
+                        style={{ padding: "10px", background: "#f5f3ec", borderRadius: "8px", border: "1px solid #ded9cd", marginBottom: "8px" }}
+                      >
+                        <div style={{ display: "grid", gap: "3px", marginBottom: "6px" }}>
+                          <label style={{ fontSize: "9px", fontWeight: 700, color: "#4d5b51" }}>Autor</label>
+                          <input
+                            type="text"
+                            value={editActivityAuthor}
+                            onChange={(e) => setEditActivityAuthor(e.target.value)}
+                            required
+                            style={{ padding: "4px 8px", fontSize: "11px", borderRadius: "5px", border: "1px solid #dcd7cb", background: "#fff" }}
+                          />
+                        </div>
+                        <div style={{ display: "grid", gap: "3px", marginBottom: "6px" }}>
+                          <label style={{ fontSize: "9px", fontWeight: 700, color: "#4d5b51" }}>Ação / Título</label>
+                          <input
+                            type="text"
+                            value={editActivityAction}
+                            onChange={(e) => setEditActivityAction(e.target.value)}
+                            required
+                            style={{ padding: "4px 8px", fontSize: "11px", borderRadius: "5px", border: "1px solid #dcd7cb", background: "#fff" }}
+                          />
+                        </div>
+                        <div style={{ display: "grid", gap: "3px", marginBottom: "8px" }}>
+                          <label style={{ fontSize: "9px", fontWeight: 700, color: "#4d5b51" }}>Mensagem / Observação</label>
+                          <textarea
+                            value={editActivityNote}
+                            onChange={(e) => setEditActivityNote(e.target.value)}
+                            rows={2}
+                            style={{ padding: "6px 8px", fontSize: "11px", borderRadius: "5px", border: "1px solid #dcd7cb", background: "#fff" }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => setEditingActivityId(null)}
+                            style={{ fontSize: "11px" }}
+                          >
+                            Cancelar
+                          </button>
+                          <button type="submit" className="primary-button" style={{ fontSize: "11px", padding: "4px 10px", minHeight: "28px" }}>
+                            Salvar
+                          </button>
+                        </div>
+                      </form>
+                    );
+                  }
+
+                  return (
+                    <div className="activity-item" key={activity.id} style={{ position: "relative" }}>
+                      <span className="activity-mark" />
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: role === "equipe" ? "44px" : "0" }}>
+                        <strong>{activity.action}</strong>
+                        <small>{activity.author} · {formatActivityDate(activity.at)} · v{activity.version}</small>
+                        {activity.note && <p>{activity.note}</p>}
+                      </div>
+                      {role === "equipe" && (
+                        <div style={{ position: "absolute", top: "2px", right: "0", display: "flex", gap: "2px" }}>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{ width: "22px", height: "22px", color: "#6a7b70" }}
+                            title="Editar este registro"
+                            onClick={() => {
+                              setEditingActivityId(activity.id);
+                              setEditActivityAuthor(activity.author);
+                              setEditActivityAction(activity.action);
+                              setEditActivityNote(activity.note || "");
+                            }}
+                          >
+                            <Pencil size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            style={{ width: "22px", height: "22px", color: "#c94a29" }}
+                            title="Excluir este registro"
+                            onClick={() => handleDeleteActivity(activity.id)}
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="detail-empty">Ainda não há interações.</p>
+              )}
+            </div>
           </aside>
         </div>
         <div className="content-detail-nav"><button onClick={() => { setSlideIndex(0); onNavigate(-1); }} disabled={position <= 0}><ArrowLeft size={17} /> Anterior</button><span>{position + 1} / {total}</span><button onClick={() => { setSlideIndex(0); onNavigate(1); }} disabled={position >= total - 1}>Próxima <ArrowRight size={17} /></button></div>
       </div>
       <div className="review-action-bar">
-        <div className="review-feedback" role="status" aria-live="polite">{feedback || (content.status === "aprovado" ? "✓ Aprovado. Sua aprovação foi registrada." : content.status === "aguardando" ? "Confira a arte, a legenda e os anexos." : statusLabel[content.status])}</div>
+        <div className="review-feedback" role="status" aria-live="polite">
+          {feedback || (content.status === "aprovado" ? "✓ Aprovado. Post pronto para agendamento." : content.status === "aguardando" ? "Confira a arte, a legenda e os anexos." : statusLabel[content.status])}
+        </div>
         <div className="review-buttons">
-          {role === "cliente" && content.status === "aguardando" && <button className="primary-button approve-button" onClick={() => { onAction("aprovado", "Conteúdo aprovado"); setAdjustOpen(false); setFeedback("✓ Aprovado! O feed já foi atualizado."); }}><CheckCircle2 size={19} /> Aprovar post</button>}
-          {role === "cliente" && content.status !== "producao" && <button className="outline-button" onClick={() => { setAdjustOpen(true); setCommentOpen(false); }}>Pedir ajuste</button>}
-          <button className="outline-button" onClick={() => { setCommentOpen(true); setAdjustOpen(false); requestAnimationFrame(() => dialogRef.current?.querySelector(".comment-form")?.scrollIntoView({ behavior: "smooth", block: "center" })); }}><MessageCircle size={16} /> Comentar</button>
+          {role === "cliente" && content.status === "aguardando" && (
+            <button className="primary-button approve-button" onClick={() => { onAction("aprovado", "Conteúdo aprovado"); setAdjustOpen(false); setFeedback("✓ Aprovado! O feed já foi atualizado."); }}>
+              <CheckCircle2 size={19} /> Aprovar post
+            </button>
+          )}
+          {role === "cliente" && content.status !== "producao" && (
+            <button className="outline-button" onClick={() => { setAdjustOpen(true); setCommentOpen(false); }}>
+              Pedir ajuste
+            </button>
+          )}
+
+          {/* Equipe / Admin review bar controls */}
+          {role === "equipe" && (
+            <>
+              {content.status !== "aprovado" ? (
+                <button
+                  type="button"
+                  className="primary-button approve-button admin-approve-btn"
+                  onClick={() => {
+                    setAdminApproveChannel("whatsapp");
+                    setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
+                    setAdminApproveOpen(true);
+                  }}
+                  title="Aprovar post pela equipe ou registrar aprovação via WhatsApp"
+                >
+                  <CheckCircle2 size={18} /> Aprovar post
+                </button>
+              ) : (
+                <span className="approved-pill-badge" style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#edf7ed", border: "1px solid #b7dfb9", borderRadius: "8px", color: "#1e5c2b", fontSize: "12px", fontWeight: 700 }}>
+                  <CheckCircle2 size={15} /> Post aprovado
+                </span>
+              )}
+            </>
+          )}
+
+          <button className="outline-button" onClick={() => { setCommentOpen(true); setAdjustOpen(false); requestAnimationFrame(() => dialogRef.current?.querySelector(".comment-form")?.scrollIntoView({ behavior: "smooth", block: "center" })); }}>
+            <MessageCircle size={16} /> {role === "equipe" ? "Comentar / Anotar" : "Comentar"}
+          </button>
           {role === "equipe" && <button className="primary-button" onClick={startEdit}>Editar post</button>}
         </div>
       </div>
@@ -815,6 +1097,164 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
               </div>
             </div>
           </section>
+        </div>
+      )}
+
+      {adminApproveOpen && (
+        <div
+          className="small-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setAdminApproveOpen(false);
+          }}
+        >
+          <div className="small-modal admin-approve-modal" role="dialog" aria-modal="true" aria-labelledby="admin-approve-title">
+            <button
+              type="button"
+              className="icon-button small-modal-close"
+              onClick={() => setAdminApproveOpen(false)}
+              aria-label="Fechar"
+            >
+              <X size={18} />
+            </button>
+            <span className="section-kicker" style={{ color: "#2d5738" }}>APROVAÇÃO ADMINISTRATIVA</span>
+            <h2 id="admin-approve-title">{content.postNumber ? `Aprovar POST ${content.postNumber}` : "Aprovar publicação"}</h2>
+            <p>
+              O cliente aprovou verbalmente pelo WhatsApp ou você deseja registrar a aprovação como equipe?
+            </p>
+
+            <div className="approve-channel-cards" style={{ display: "grid", gap: "8px", margin: "10px 0" }}>
+              <label
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "flex-start",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: adminApproveChannel === "whatsapp" ? "2px solid #2d5738" : "1px solid #dcd7cb",
+                  background: adminApproveChannel === "whatsapp" ? "#edf7ed" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="radio"
+                  name="admin-approve-channel"
+                  value="whatsapp"
+                  checked={adminApproveChannel === "whatsapp"}
+                  onChange={() => {
+                    setAdminApproveChannel("whatsapp");
+                    if (!adminApproveNote || adminApproveNote === "Conteúdo revisado e aprovado pela equipe Nurea.") {
+                      setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
+                    }
+                  }}
+                  style={{ marginTop: "3px" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <strong style={{ fontSize: "13px", color: "#14261c" }}>Aprovação pelo WhatsApp</strong>
+                    <span style={{ fontSize: "9px", background: "#d1e7dd", color: "#0f5132", padding: "2px 6px", borderRadius: "10px", fontWeight: 700 }}>Recomendado</span>
+                  </div>
+                  <small style={{ fontSize: "11px", color: "#506155", display: "block", marginTop: "2px" }}>
+                    Registra como &quot;Cliente (via WhatsApp)&quot; com status aprovado.
+                  </small>
+                </div>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "flex-start",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  border: adminApproveChannel === "equipe" ? "2px solid #2d5738" : "1px solid #dcd7cb",
+                  background: adminApproveChannel === "equipe" ? "#edf7ed" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="radio"
+                  name="admin-approve-channel"
+                  value="equipe"
+                  checked={adminApproveChannel === "equipe"}
+                  onChange={() => {
+                    setAdminApproveChannel("equipe");
+                    if (!adminApproveNote || adminApproveNote === "Cliente aprovou pelo WhatsApp sem alterações.") {
+                      setAdminApproveNote("Conteúdo revisado e aprovado pela equipe Nurea.");
+                    }
+                  }}
+                  style={{ marginTop: "3px" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <strong style={{ fontSize: "13px", color: "#14261c" }}>Aprovação Direta pela Equipe</strong>
+                  </div>
+                  <small style={{ fontSize: "11px", color: "#506155", display: "block", marginTop: "2px" }}>
+                    Registra como ação interna da Equipe Nurea.
+                  </small>
+                </div>
+              </label>
+            </div>
+
+            {adminApproveChannel === "whatsapp" && (
+              <div style={{ margin: "4px 0 10px" }}>
+                <span style={{ fontSize: "10px", fontWeight: 700, color: "#617267", display: "block", marginBottom: "4px" }}>Sugestões rápidas de nota:</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  <button
+                    type="button"
+                    className="outline-button"
+                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
+                    onClick={() => setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.")}
+                  >
+                    Aprovou sem alterações
+                  </button>
+                  <button
+                    type="button"
+                    className="outline-button"
+                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
+                    onClick={() => setAdminApproveNote("Aprovado verbalmente por áudio no WhatsApp.")}
+                  >
+                    Aprovou por áudio
+                  </button>
+                  <button
+                    type="button"
+                    className="outline-button"
+                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
+                    onClick={() => setAdminApproveNote("Cliente deu ok na mensagem do WhatsApp.")}
+                  >
+                    Deu ok na mensagem
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <label htmlFor="admin-approve-note" style={{ fontSize: "11px", fontWeight: 700, color: "#324438", marginTop: "6px" }}>Observação / Comentário:</label>
+            <textarea
+              id="admin-approve-note"
+              rows={3}
+              value={adminApproveNote}
+              onChange={(e) => setAdminApproveNote(e.target.value)}
+              placeholder="Descreva detalhes se desejar..."
+              style={{ width: "100%", padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #dcd7cb" }}
+            />
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "14px" }}>
+              <button
+                type="button"
+                className="outline-button"
+                onClick={() => setAdminApproveOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleAdminApprove}
+                style={{ background: "#2d5738", color: "#fff", borderColor: "#2d5738" }}
+              >
+                <CheckCircle2 size={16} /> Confirmar e aprovar post
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>

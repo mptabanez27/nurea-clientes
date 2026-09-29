@@ -18,7 +18,8 @@
 - [x] Player de vídeo interativo para Reels/vídeo: execução real sob clique, controles nativos de reprodução e vídeo demonstrativo de fallback quando ainda não há arquivo enviado.
 - [x] Planejamento local por cliente/mês: upload imagem/PDF, substituição, remoção, versão, histórico e aprovação.
 - [ ] Recuperar versões anteriores e implementar lixeira/limpeza de blobs sem referência (posts, mídias, logos e planejamentos removidos/substituídos).
-- [ ] Levar os fluxos locais de comentário, ajuste e aprovação ao backend com identidade autenticada.
+- [x] Fluxos de aprovação pelo admin (registro de aprovação verbal via WhatsApp ou direta da equipe), comentários com identificação de autor e edição/exclusão de histórico sincronizados no banco de dados.
+- [x] Proteção contra perda acidental em 'Restaurar demonstração' (modal exigindo digitação de 'RESTAURAR') e botão de 'Sincronizar nuvem' no painel.
 - [ ] Permitir escolher manualmente um frame do vídeo como capa; o upload de imagem de capa já existe para mídia principal e anexos de vídeo, mas a miniatura automática pode falhar com alguns codecs.
 - [ ] Painel da equipe com todos os clientes e pendências.
 - [ ] Gerador assistido do calendário sazonal com fontes e revisão.

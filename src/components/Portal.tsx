@@ -31,6 +31,7 @@ import {
   Play,
   Plus,
   PlusSquare,
+  RefreshCw,
   RotateCcw,
   Search,
   UserCheck,
@@ -135,6 +136,10 @@ export default function Portal({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const [instaFeedOpen, setInstaFeedOpen] = useState(false);
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [restoreConfirmText, setRestoreConfirmText] = useState("");
+  const [syncingCloud, setSyncingCloud] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const logoButtonRef = useRef<HTMLButtonElement>(null);
   const logoModalCloseRef = useRef<HTMLButtonElement>(null);
@@ -477,11 +482,13 @@ export default function Portal({
     });
   }
 
-  function actionOnContent(id: string, status: ContentStatus, action: string, note?: string) {
+  function actionOnContent(id: string, status: ContentStatus, action: string, note?: string, author?: string) {
+    const effectiveAuthor = author || (role === "cliente" ? "Cliente" : "Equipe Nurea");
+    const tempId = uid();
     updateContent(id, (content) => ({
       ...content,
       status,
-      activity: [{ id: uid(), author: role === "cliente" ? "Cliente" : "Equipe Nurea", action, note, at: todayStamp(), version: content.version }, ...content.activity],
+      activity: [{ id: tempId, author: effectiveAuthor, action, note, at: todayStamp(), version: content.version }, ...content.activity],
     }));
     fetch("/api/contents/action", {
       method: "POST",
@@ -493,10 +500,22 @@ export default function Portal({
         status,
         action,
         note,
-        author: role === "cliente" ? "Cliente" : "Equipe Nurea",
+        author: effectiveAuthor,
         version: selected?.version || 1,
       }),
-    }).catch(console.error);
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          if (data.activityId) {
+            updateContent(id, (content) => ({
+              ...content,
+              activity: content.activity.map((a) => (a.id === tempId ? { ...a, id: data.activityId } : a)),
+            }));
+          }
+        }
+      })
+      .catch(console.error);
   }
 
   async function createContent(event: React.FormEvent<HTMLFormElement>) {
@@ -607,8 +626,39 @@ export default function Portal({
     }).catch(console.error);
   }
 
-  function restoreDemo() {
-    if (!window.confirm("Restaurar os cinco clientes desta demonstração local?")) return;
+  async function syncFromCloud() {
+    setSyncingCloud(true);
+    setSyncFeedback(null);
+    try {
+      if (!availableClients && !fixedClient) {
+        const resClients = await fetch("/api/clients");
+        if (resClients.ok) {
+          const all = await resClients.json();
+          if (all && all.length > 0) {
+            setClientsList(all.map((c: any) => ({ id: c.id, name: c.name, access_token: c.access_token })));
+          }
+        }
+      }
+      const resWs = await fetch(`/api/workspace?clientId=${clientId}&monthKey=${activeMonthKey}`);
+      if (resWs.ok) {
+        const cloudData = await resWs.json();
+        if (cloudData) {
+          setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
+        }
+      }
+      setSyncFeedback("✓ Sincronizado com a nuvem!");
+      setTimeout(() => setSyncFeedback(null), 3500);
+    } catch (err) {
+      console.warn("Erro ao sincronizar da nuvem:", err);
+      setSyncFeedback("Erro ao sincronizar.");
+      setTimeout(() => setSyncFeedback(null), 3500);
+    } finally {
+      setSyncingCloud(false);
+    }
+  }
+
+  function handleConfirmRestoreDemo() {
+    if (restoreConfirmText.trim().toUpperCase() !== "RESTAURAR") return;
     setWorkspaces(initialWorkspaces);
     setClientId(defaultClientId);
     setSelectedId(null);
@@ -617,6 +667,10 @@ export default function Portal({
     setNewMonthOpen(false);
     setView("feed");
     setPendingOnly(false);
+    setRestoreModalOpen(false);
+    setRestoreConfirmText("");
+    setSyncFeedback("Exemplos restaurados. Clique em 'Sincronizar nuvem' para recarregar do banco.");
+    setTimeout(() => setSyncFeedback(null), 5000);
   }
 
   return (
@@ -669,9 +723,34 @@ export default function Portal({
               >
                 <LogOut size={14} /> Sair do painel
               </button>
-              <button type="button" className="restore-button" onClick={restoreDemo} style={{ cursor: "pointer" }}>
-                <RotateCcw size={14} /> Restaurar demonstração
+              <button
+                type="button"
+                className="restore-button"
+                onClick={syncFromCloud}
+                disabled={syncingCloud}
+                style={{ color: "#c2d0c7", cursor: "pointer" }}
+                title="Recarregar dados atualizados do banco de dados na nuvem"
+              >
+                <RefreshCw size={13} className={syncingCloud ? "spinning" : ""} />{" "}
+                {syncingCloud ? "Sincronizando..." : "Sincronizar nuvem"}
               </button>
+              <button
+                type="button"
+                className="restore-button"
+                onClick={() => {
+                  setRestoreConfirmText("");
+                  setRestoreModalOpen(true);
+                }}
+                style={{ color: "#81998b", cursor: "pointer", fontSize: "10px", marginTop: "4px" }}
+                title="Abre confirmação para restaurar exemplos locais"
+              >
+                <RotateCcw size={12} /> Restaurar demonstração local
+              </button>
+              {syncFeedback && (
+                <div style={{ fontSize: "10px", color: "#a5d6a7", padding: "4px 8px", background: "#ffffff0f", borderRadius: "6px", marginTop: "4px", lineHeight: 1.4 }}>
+                  {syncFeedback}
+                </div>
+              )}
             </div>
           )}
           <p>PORTAL DE CONTEÚDOS · NUREA</p>
@@ -786,7 +865,7 @@ export default function Portal({
         </main>
       </div>
 
-      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} clientLogo={logoUrl ?? undefined} clientSlug={clientId} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; const isStory = selected.format === "story"; setWorkspace(prev => { const remaining = prev.contents.filter(item => item.id !== toDeleteId); if (isStory) return { ...prev, contents: remaining }; const feed = remaining.filter(item => item.format !== "story"); const stories = remaining.filter(item => item.format === "story"); const renumberedFeed = feed.slice(0, 8).map((item, idx) => ({ ...item, postNumber: idx + 1 })); fetch("/api/contents/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: renumberedFeed.map(item => ({ id: item.id, postNumber: item.postNumber })) }) }).catch(console.error); return { ...prev, contents: [...renumberedFeed, ...stories] }; }); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note) => actionOnContent(selected.id, status, action, note)} />}
+      {selected && <ContentDetail key={`${clientId}-${selected.id}`} content={selected} clientName={workspace.clientName} clientLogo={logoUrl ?? undefined} clientSlug={clientId} role={role} position={selectedPosition} total={currentList.length} onClose={closeDetail} onDelete={async () => { if (!window.confirm(`Excluir ${selected.postNumber ? `POST ${selected.postNumber}` : "Story"}? Esta ação remove a peça e seu histórico deste mês.`)) return; const toDeleteId = selected.id; const isStory = selected.format === "story"; setWorkspace(prev => { const remaining = prev.contents.filter(item => item.id !== toDeleteId); if (isStory) return { ...prev, contents: remaining }; const feed = remaining.filter(item => item.format !== "story"); const stories = remaining.filter(item => item.format === "story"); const renumberedFeed = feed.slice(0, 8).map((item, idx) => ({ ...item, postNumber: idx + 1 })); fetch("/api/contents/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: renumberedFeed.map(item => ({ id: item.id, postNumber: item.postNumber })) }) }).catch(console.error); return { ...prev, contents: [...renumberedFeed, ...stories] }; }); closeDetail(); fetch(`/api/contents?id=${toDeleteId}`, { method: "DELETE" }).catch(console.error); }} onNavigate={(direction) => { const next = currentList[selectedPosition + direction]; if (next) openDetail(next.id); }} onUpdate={(transform) => updateContent(selected.id, transform)} onAction={(status, action, note, author) => actionOnContent(selected.id, status, action, note, author)} />}
 
       {logoEditorOpen && <div className="logo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeLogo(); }}>
         <section className="logo-modal" role="dialog" aria-modal="true" aria-labelledby="logo-modal-title">
@@ -987,6 +1066,83 @@ export default function Portal({
                   )}
                 </span>
               </nav>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restoreModalOpen && (
+        <div
+          className="small-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setRestoreModalOpen(false);
+              setRestoreConfirmText("");
+            }
+          }}
+        >
+          <div className="small-modal restore-safety-modal" role="dialog" aria-modal="true" aria-labelledby="restore-safety-title">
+            <button
+              type="button"
+              className="icon-button small-modal-close"
+              onClick={() => {
+                setRestoreModalOpen(false);
+                setRestoreConfirmText("");
+              }}
+              aria-label="Fechar"
+            >
+              <X size={18} />
+            </button>
+            <span className="section-kicker" style={{ color: "#d97706" }}>ZONA DE PROTEÇÃO DE DADOS</span>
+            <h2 id="restore-safety-title" style={{ fontSize: "22px" }}>Restaurar demonstração local?</h2>
+            <div style={{ display: "grid", gap: "8px", margin: "10px 0", fontSize: "12px", color: "#4e5e53", lineHeight: 1.5 }}>
+              <p>
+                <strong>Atenção:</strong> Esta ação redefine a visualização do seu navegador para os <strong>posts de exemplo iniciais</strong>.
+              </p>
+              <p>
+                Seus conteúdos salvos no banco de dados na nuvem (Supabase) <strong>não serão apagados</strong>, mas para evitar cliques acidentais e perda do que você estava visualizando, digite <strong>RESTAURAR</strong> abaixo para liberar a ação:
+              </p>
+            </div>
+
+            <label htmlFor="confirm-restore-input" style={{ fontSize: "11px", fontWeight: 700, color: "#324438", marginTop: "6px" }}>
+              Digite a palavra de segurança:
+            </label>
+            <input
+              id="confirm-restore-input"
+              type="text"
+              autoComplete="off"
+              placeholder="Digite RESTAURAR"
+              value={restoreConfirmText}
+              onChange={(e) => setRestoreConfirmText(e.target.value)}
+              style={{ width: "100%", padding: "8px 10px", fontSize: "13px", fontWeight: 600, letterSpacing: "1px", borderRadius: "6px", border: "2px solid #dcd7cb" }}
+              autoFocus
+            />
+
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "16px" }}>
+              <button
+                type="button"
+                className="outline-button"
+                onClick={() => {
+                  setRestoreModalOpen(false);
+                  setRestoreConfirmText("");
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={restoreConfirmText.trim().toUpperCase() !== "RESTAURAR"}
+                onClick={handleConfirmRestoreDemo}
+                style={{
+                  background: restoreConfirmText.trim().toUpperCase() === "RESTAURAR" ? "#c94a29" : "#ccc",
+                  borderColor: restoreConfirmText.trim().toUpperCase() === "RESTAURAR" ? "#c94a29" : "#ccc",
+                  color: "#fff",
+                  cursor: restoreConfirmText.trim().toUpperCase() === "RESTAURAR" ? "pointer" : "not-allowed",
+                }}
+              >
+                Restaurar demonstração
+              </button>
             </div>
           </div>
         </div>

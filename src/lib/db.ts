@@ -398,17 +398,60 @@ export async function addActivityRecord(
   action: string,
   note?: string,
   version = 1
-) {
+): Promise<string | undefined> {
   const admin = getSupabaseAdmin();
-  const { error } = await admin.from("activities").insert({
-    content_id: contentId,
-    author,
-    action,
-    note,
-    version,
-  });
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(contentId);
+  if (!isUuid) return undefined;
+  const { data, error } = await admin
+    .from("activities")
+    .insert({
+      content_id: contentId,
+      author,
+      action,
+      note,
+      version,
+    })
+    .select("id")
+    .single();
 
-  if (error) console.error("Erro ao registrar atividade:", error);
+  if (error) {
+    console.error("Erro ao registrar atividade:", error);
+    return undefined;
+  }
+  return data?.id;
+}
+
+// Atualizar atividade existente (edição pelo admin)
+export async function updateActivityRecord(
+  activityId: string,
+  updates: { author?: string; action?: string; note?: string }
+): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(activityId);
+  if (!isUuid) return false;
+  const payload: Record<string, any> = {};
+  if (updates.author !== undefined) payload.author = updates.author;
+  if (updates.action !== undefined) payload.action = updates.action;
+  if (updates.note !== undefined) payload.note = updates.note;
+  const { error } = await admin.from("activities").update(payload).eq("id", activityId);
+  if (error) {
+    console.error("Erro ao atualizar atividade:", error);
+    return false;
+  }
+  return true;
+}
+
+// Excluir atividade (remoção pelo admin)
+export async function deleteActivityRecord(activityId: string): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(activityId);
+  if (!isUuid) return false;
+  const { error } = await admin.from("activities").delete().eq("id", activityId);
+  if (error) {
+    console.error("Erro ao excluir atividade:", error);
+    return false;
+  }
+  return true;
 }
 
 // Deletar post
