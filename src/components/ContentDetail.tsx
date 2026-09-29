@@ -86,35 +86,13 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
   const [coverDraft, setCoverDraft] = useState({ scale: 100, x: 0, y: 0 });
   const coverDragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
-  // Estados de aprovação administrativa e edição de histórico
-  const [adminApproveOpen, setAdminApproveOpen] = useState(false);
-  const [adminApproveChannel, setAdminApproveChannel] = useState<"whatsapp" | "equipe">("whatsapp");
-  const [adminApproveNote, setAdminApproveNote] = useState("Cliente aprovou pelo WhatsApp sem alterações.");
+  // Comentários e edição de histórico
   const [commentAuthor, setCommentAuthor] = useState("Equipe Nurea");
 
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [editActivityAuthor, setEditActivityAuthor] = useState("");
   const [editActivityAction, setEditActivityAction] = useState("");
   const [editActivityNote, setEditActivityNote] = useState("");
-
-  function handleAdminApprove() {
-    let action = "Conteúdo aprovado";
-    let author = "Equipe Nurea";
-    const note = adminApproveNote.trim() || undefined;
-
-    if (adminApproveChannel === "whatsapp") {
-      action = "Aprovado via WhatsApp";
-      author = "Cliente (via WhatsApp)";
-    } else {
-      action = "Conteúdo aprovado pela equipe";
-      author = "Equipe Nurea";
-    }
-
-    onAction("aprovado", action, note, author);
-    setAdminApproveOpen(false);
-    setAdjustOpen(false);
-    setFeedback("✓ Post aprovado com sucesso! Feed e status atualizados.");
-  }
 
   async function handleSaveActivityEdit(activityId: string) {
     if (!editActivityAuthor.trim() || !editActivityAction.trim()) return;
@@ -745,19 +723,6 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                 <button className="outline-button" onClick={startEdit}>Editar conteúdo e arquivos</button>
                 <button className="text-button danger-button" onClick={onDelete}>Excluir publicação</button>
                 {(content.status === "producao" || content.status === "ajuste") && <button className="outline-button" onClick={() => onAction("aguardando", "Enviado para aprovação", undefined, "Equipe Nurea")}>Enviar para aprovação</button>}
-                {content.status !== "aprovado" && content.status !== "publicado" && content.status !== "agendado" && (
-                  <button
-                    type="button"
-                    className="primary-button approve-button"
-                    onClick={() => {
-                      setAdminApproveChannel("whatsapp");
-                      setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
-                      setAdminApproveOpen(true);
-                    }}
-                  >
-                    <CheckCircle2 size={16} /> Aprovar post (WhatsApp / Equipe)
-                  </button>
-                )}
                 {content.status === "aprovado" && (
                   <>
                     <button className="primary-button" onClick={() => onAction("agendado", "Agendamento registrado", undefined, "Equipe Nurea")}>Marcar agendado</button>
@@ -939,11 +904,11 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
                   type="button"
                   className="primary-button approve-button admin-approve-btn"
                   onClick={() => {
-                    setAdminApproveChannel("whatsapp");
-                    setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
-                    setAdminApproveOpen(true);
+                    onAction("aprovado", "Conteúdo aprovado", undefined, "Equipe Nurea");
+                    setAdjustOpen(false);
+                    setFeedback("✓ Post aprovado com sucesso! Feed atualizado.");
                   }}
-                  title="Aprovar post pela equipe ou registrar aprovação via WhatsApp"
+                  title="Aprovar post"
                 >
                   <CheckCircle2 size={18} /> Aprovar post
                 </button>
@@ -1100,163 +1065,6 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
         </div>
       )}
 
-      {adminApproveOpen && (
-        <div
-          className="small-modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setAdminApproveOpen(false);
-          }}
-        >
-          <div className="small-modal admin-approve-modal" role="dialog" aria-modal="true" aria-labelledby="admin-approve-title">
-            <button
-              type="button"
-              className="icon-button small-modal-close"
-              onClick={() => setAdminApproveOpen(false)}
-              aria-label="Fechar"
-            >
-              <X size={18} />
-            </button>
-            <span className="section-kicker" style={{ color: "#2d5738" }}>APROVAÇÃO ADMINISTRATIVA</span>
-            <h2 id="admin-approve-title">{content.postNumber ? `Aprovar POST ${content.postNumber}` : "Aprovar publicação"}</h2>
-            <p>
-              O cliente aprovou verbalmente pelo WhatsApp ou você deseja registrar a aprovação como equipe?
-            </p>
-
-            <div className="approve-channel-cards" style={{ display: "grid", gap: "8px", margin: "10px 0" }}>
-              <label
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  alignItems: "flex-start",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: adminApproveChannel === "whatsapp" ? "2px solid #2d5738" : "1px solid #dcd7cb",
-                  background: adminApproveChannel === "whatsapp" ? "#edf7ed" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="admin-approve-channel"
-                  value="whatsapp"
-                  checked={adminApproveChannel === "whatsapp"}
-                  onChange={() => {
-                    setAdminApproveChannel("whatsapp");
-                    if (!adminApproveNote || adminApproveNote === "Conteúdo revisado e aprovado pela equipe Nurea.") {
-                      setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.");
-                    }
-                  }}
-                  style={{ marginTop: "3px" }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <strong style={{ fontSize: "13px", color: "#14261c" }}>Aprovação pelo WhatsApp</strong>
-                    <span style={{ fontSize: "9px", background: "#d1e7dd", color: "#0f5132", padding: "2px 6px", borderRadius: "10px", fontWeight: 700 }}>Recomendado</span>
-                  </div>
-                  <small style={{ fontSize: "11px", color: "#506155", display: "block", marginTop: "2px" }}>
-                    Registra como &quot;Cliente (via WhatsApp)&quot; com status aprovado.
-                  </small>
-                </div>
-              </label>
-
-              <label
-                style={{
-                  display: "flex",
-                  gap: "10px",
-                  alignItems: "flex-start",
-                  padding: "12px",
-                  borderRadius: "8px",
-                  border: adminApproveChannel === "equipe" ? "2px solid #2d5738" : "1px solid #dcd7cb",
-                  background: adminApproveChannel === "equipe" ? "#edf7ed" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="admin-approve-channel"
-                  value="equipe"
-                  checked={adminApproveChannel === "equipe"}
-                  onChange={() => {
-                    setAdminApproveChannel("equipe");
-                    if (!adminApproveNote || adminApproveNote === "Cliente aprovou pelo WhatsApp sem alterações.") {
-                      setAdminApproveNote("Conteúdo revisado e aprovado pela equipe Nurea.");
-                    }
-                  }}
-                  style={{ marginTop: "3px" }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <strong style={{ fontSize: "13px", color: "#14261c" }}>Aprovação Direta pela Equipe</strong>
-                  </div>
-                  <small style={{ fontSize: "11px", color: "#506155", display: "block", marginTop: "2px" }}>
-                    Registra como ação interna da Equipe Nurea.
-                  </small>
-                </div>
-              </label>
-            </div>
-
-            {adminApproveChannel === "whatsapp" && (
-              <div style={{ margin: "4px 0 10px" }}>
-                <span style={{ fontSize: "10px", fontWeight: 700, color: "#617267", display: "block", marginBottom: "4px" }}>Sugestões rápidas de nota:</span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                  <button
-                    type="button"
-                    className="outline-button"
-                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
-                    onClick={() => setAdminApproveNote("Cliente aprovou pelo WhatsApp sem alterações.")}
-                  >
-                    Aprovou sem alterações
-                  </button>
-                  <button
-                    type="button"
-                    className="outline-button"
-                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
-                    onClick={() => setAdminApproveNote("Aprovado verbalmente por áudio no WhatsApp.")}
-                  >
-                    Aprovou por áudio
-                  </button>
-                  <button
-                    type="button"
-                    className="outline-button"
-                    style={{ fontSize: "10px", padding: "3px 8px", minHeight: "26px" }}
-                    onClick={() => setAdminApproveNote("Cliente deu ok na mensagem do WhatsApp.")}
-                  >
-                    Deu ok na mensagem
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <label htmlFor="admin-approve-note" style={{ fontSize: "11px", fontWeight: 700, color: "#324438", marginTop: "6px" }}>Observação / Comentário:</label>
-            <textarea
-              id="admin-approve-note"
-              rows={3}
-              value={adminApproveNote}
-              onChange={(e) => setAdminApproveNote(e.target.value)}
-              placeholder="Descreva detalhes se desejar..."
-              style={{ width: "100%", padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #dcd7cb" }}
-            />
-
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "14px" }}>
-              <button
-                type="button"
-                className="outline-button"
-                onClick={() => setAdminApproveOpen(false)}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleAdminApprove}
-                style={{ background: "#2d5738", color: "#fff", borderColor: "#2d5738" }}
-              >
-                <CheckCircle2 size={16} /> Confirmar e aprovar post
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   </div>;
 }

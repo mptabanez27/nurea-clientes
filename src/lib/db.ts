@@ -181,6 +181,40 @@ export async function updateClientLogoSettings(
   }
 }
 
+// Criar ou garantir ciclo de mês no banco
+export async function createMonthCycleRecord(clientId: string, monthKey: string) {
+  const admin = getSupabaseAdmin();
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthLabel = new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+  const formattedName = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+  const { data, error } = await admin
+    .from("month_cycles")
+    .upsert(
+      {
+        client_id: clientId,
+        month_key: monthKey,
+        month_name: formattedName,
+        plan_status: "rascunho",
+        plan_version: 1,
+        next_post_number: 1,
+      },
+      { onConflict: "client_id,month_key" }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Erro ao criar ciclo de mês no Supabase:", error);
+    throw error;
+  }
+  return data;
+}
+
 // Carregar o workspace completo de um cliente (ciclos, plano, posts)
 export async function loadWorkspaceData(
   clientId: string,
@@ -226,6 +260,74 @@ export async function loadWorkspaceData(
         nextPostNumber: c.next_post_number || 1,
       };
     }
+  }
+
+  // Descobrir quaisquer meses com conteúdos já cadastrados no banco
+  const { data: contentsMonthRows } = await admin
+    .from("contents")
+    .select("month_key")
+    .eq("client_id", clientId);
+  if (contentsMonthRows) {
+    for (const row of contentsMonthRows) {
+      if (row.month_key && !monthsMap[row.month_key]) {
+        monthsMap[row.month_key] = {
+          plan: {
+            status: "rascunho",
+            version: 1,
+            activity: [],
+          },
+          contents: [],
+          nextPostNumber: 1,
+        };
+      }
+    }
+  }
+
+  // Garantir que 2026-09, 2026-10 e targetMonthKey sempre existam no mapa retornado
+  const guaranteedKeys = Array.from(new Set(["2026-09", "2026-10", targetMonthKey, ...Object.keys(monthsMap)]));
+  for (const k of guaranteedKeys) {
+    if (!monthsMap[k]) {
+      monthsMap[k] = {
+        plan: {
+          status: "rascunho",
+          version: 1,
+          activity: [],
+        },
+        contents: [],
+        nextPostNumber: 1,
+      };
+    }
+  }
+
+  // Garantir que targetMonthKey esteja persistido no banco
+  if (!cycles?.some((c) => c.month_key === targetMonthKey)) {
+    createMonthCycleRecord(clientId, targetMonthKey).catch((err) =>
+      console.warn("Auto-create month cycle failed:", err)
+    );
+  }
+
+  // Buscar atividades do plano para o ciclo ativo
+  const activeCycleRow = cycles?.find((c) => c.month_key === targetMonthKey);
+  let planActivities: any[] = [];
+  if (activeCycleRow?.id) {
+    const { data: actData } = await admin
+      .from("activities")
+      .select("*")
+      .eq("month_cycle_id", activeCycleRow.id)
+      .order("created_at", { ascending: false });
+    if (actData) {
+      planActivities = actData.map((a: any) => ({
+        id: a.id,
+        author: a.author,
+        action: a.action,
+        note: a.note || undefined,
+        at: a.created_at,
+        version: a.version || 1,
+      }));
+    }
+  }
+  if (monthsMap[targetMonthKey]) {
+    monthsMap[targetMonthKey].plan.activity = planActivities;
   }
 
   // 3. Buscar posts/stories do mês em foco

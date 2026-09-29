@@ -148,7 +148,17 @@ export default function Portal({
   const workspace = workspaces[clientId] ?? initialWorkspaces[defaultClientId];
   const logoUrl = logoPreview && logoPreview.id === workspace.logoFileId ? logoPreview.url : null;
   const activeMonthKey = workspace.monthKey ?? "2026-09";
-  const monthKeys = Array.from(new Set([...Object.keys(workspace.months ?? {}), activeMonthKey])).sort().reverse();
+  const monthKeys = Array.from(
+    new Set([
+      "2026-09",
+      "2026-10",
+      ...Object.keys(workspace.months ?? {}),
+      activeMonthKey,
+    ])
+  )
+    .filter((k) => /^\d{4}-(0[1-9]|1[0-2])$/.test(k))
+    .sort()
+    .reverse();
 
   function reorderFeed(sourceId: string, targetId: string) {
     if (sourceId === targetId) return;
@@ -255,16 +265,50 @@ export default function Portal({
     }
   }
 
-  function switchMonth(nextKey: string, create = false) {
+  async function switchMonth(nextKey: string, create = false) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(nextKey)) return;
     if (!create && !monthKeys.includes(nextKey)) return;
     if (nextKey === activeMonthKey) { setNewMonthOpen(false); return; }
+
     setWorkspace((prev) => {
       const currentKey = prev.monthKey ?? "2026-09";
-      const months = { ...prev.months, [currentKey]: { plan: prev.plan, contents: prev.contents, nextPostNumber: prev.nextPostNumber } };
-      const target: import("@/lib/demo").MonthCycle = months[nextKey] ?? { plan: { status: "rascunho" as const, version: 1, activity: [] }, contents: [] };
-      return { ...prev, monthKey: nextKey, month: monthName(nextKey), months, plan: target.plan, contents: target.contents, nextPostNumber: target.nextPostNumber };
+      const months = {
+        ...prev.months,
+        [currentKey]: { plan: prev.plan, contents: prev.contents, nextPostNumber: prev.nextPostNumber },
+        [nextKey]: prev.months?.[nextKey] ?? {
+          plan: { status: "rascunho" as const, version: 1, activity: [] },
+          contents: [],
+          nextPostNumber: 1,
+        },
+      };
+      const target: import("@/lib/demo").MonthCycle = months[nextKey] ?? {
+        plan: { status: "rascunho" as const, version: 1, activity: [] },
+        contents: [],
+        nextPostNumber: 1,
+      };
+      return {
+        ...prev,
+        monthKey: nextKey,
+        month: monthName(nextKey),
+        months,
+        plan: target.plan,
+        contents: target.contents,
+        nextPostNumber: target.nextPostNumber ?? 1,
+      };
     });
+
+    if (create) {
+      try {
+        await fetch("/api/workspace/month", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, monthKey: nextKey }),
+        });
+      } catch (err) {
+        console.error("Erro ao persistir novo mês no servidor:", err);
+      }
+    }
+
     setSelectedId(null);
     setNewOpen(false);
     setNewMonthOpen(false);
@@ -317,7 +361,20 @@ export default function Portal({
         if (resWs.ok) {
           const cloudData = await resWs.json();
           if (active && cloudData) {
-            setWorkspaces((prev) => ({ ...prev, [clientId]: cloudData }));
+            setWorkspaces((prev) => {
+              const prevWs = prev[clientId];
+              const mergedMonths = {
+                ...(prevWs?.months ?? {}),
+                ...(cloudData.months ?? {}),
+              };
+              return {
+                ...prev,
+                [clientId]: {
+                  ...cloudData,
+                  months: mergedMonths,
+                },
+              };
+            });
           }
         }
       } catch (err) {
