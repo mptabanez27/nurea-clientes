@@ -17,6 +17,7 @@
 - Em 28/09/2026, o refinamento visual trocou o preenchimento dourado de `POST N` por destaque tipográfico verde, introduziu superfícies translúcidas e blur contextual, e adicionou transições de entrada e resposta nos controles com suporte a movimento reduzido.
 
 - Em 28/09/2026, o usuário decidiu manter a regra atual de numeração e reordenação de POST 1, POST 2 etc.; a revisão não altera essa lógica.
+- Em 28/09/2026, a reordenação visual do feed no modo Equipe ficou apenas por arrastar e soltar os cards; os botões de seta e Subir/Descer foram removidos.
 - A simulação em grade oferece mês selecionado ou todos os conteúdos já disponíveis ao cliente no portal, em ordem de data mais recente. O perfil Studio Rose usa `@studiorosebrighenti`. A prévia não representa publicação automática no Instagram.
 - A aprovação do planejamento exige arquivo próprio; o exemplo não é documento enviável. Novos posts começam após aprovação do planejamento.
 - Decisões registradas no histórico permanecem visíveis; a equipe pode lançar uma correção ou desconsideração como novo evento.

@@ -425,7 +425,6 @@ export default function ContentDetail({ content, clientName, clientLogo, clientS
         </div>
         <div className="detail-quick-links"><button onClick={() => captionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Ver legenda</button><button onClick={() => attachmentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>Anexos ({content.attachments?.length ?? 0})</button>{selectedAttachment && <button onClick={() => setSelectedAttachmentId(null)}>Voltar à publicação</button>}</div>
         <div className="content-detail-preview-col">
-          <p className="instagram-preview-label">Prévia visual · Instagram</p>
           <div className="insta-post-card">
             {/* Header */}
             <div className="insta-header">

@@ -26,7 +26,7 @@ O isolamento agora é aplicado no código das APIs. A produção ainda depende d
 - [x] Preservar o histórico de aprovação com eventos de correção, sem editar/apagar decisões anteriores.
 - [ ] Guiar o detalhe do post nesta ordem: número e data, mídia, legenda e anexos, decisão; manter “Aprovar post” como ação principal visível.
 - [x] Identificar a simulação do Instagram e retirar controles simulados que pareciam operacionais.
-- [x] Adicionar botões de reordenação para toque e teclado na grade e na lista, mantendo a regra de numeração atual por decisão do usuário.
+- [x] Manter a reordenação no modo Equipe apenas por arrastar e soltar os cards, preservando a regra de numeração atual por decisão do usuário.
 - [x] Mostrar meses existentes e criar um ciclo somente após ação explícita da equipe.
 - [x] Exigir planejamento aprovado para criar novos posts; revisar exceções operacionais no piloto.
 - [ ] Fazer auditoria de acessibilidade e do fluxo mobile no painel publicado, seguida de teste com clientes piloto.

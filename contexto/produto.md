@@ -53,7 +53,7 @@ O portal usa Next.js e Supabase com painel de equipe e links exclusivos por clie
 - Barra fixa de ações: Aprovar post (prioritária enquanto aguarda aprovação), Pedir ajuste e Comentar. Aprovar altera imediatamente o card com selo, borda e superfície verde suave e atualiza a contagem. Comentários não alteram status; ajustes exigem texto e entram no histórico da versão.
 - Equipe edita título, categoria, formato, data, legenda, mídia, link publicado e compartilhamento em Story, inclusive após publicação. Pode remover/reordenar mídia, substituir arquivos, definir capa de vídeo principal ou anexo, remover anexos, excluir uma peça e remover a logo do cliente.
 - Alterações de conteúdo/arquivos criam versão em preparação e exigem reenvio/aprovação, inclusive em peças publicadas. Link e marca de compartilhamento são dados operacionais e não invalidam aprovação. O histórico de decisões permanece como registro.
-- A reordenação e a exclusão mantêm a regra atual de renumerar a grade do mês; o usuário decidiu preservá-la nesta revisão.
+- A reordenação e a exclusão mantêm a regra atual de renumerar a grade do mês; a equipe reorganiza os posts arrastando os cards, sem botões de seta.
 - Planejamento aceita imagem/PDF de até 20 MB por cliente/mês: adicionar, substituir, remover, baixar e enviar para aprovação. Trocar/remover invalida aprovação anterior e registra versão/atividade. O exemplo ilustrativo não pode ser enviado. Em produção, o arquivo é enviado ao Storage e sua referência é salva no banco; versões anteriores ainda não têm restauração pela interface.
 
 ## Ajustes de fluxo — 28/09/2026
