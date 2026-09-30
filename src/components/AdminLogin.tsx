@@ -44,6 +44,7 @@ export default function AdminLogin() {
 
   return (
     <div
+      className="admin-login"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -88,10 +89,12 @@ export default function AdminLogin() {
           <h1
             style={{
               fontSize: "24px",
-              fontWeight: "600",
+              fontFamily: "var(--font-playfair), serif",
+              fontWeight: "400",
               margin: "8px 0 6px",
               color: "#f7f4ee",
-              letterSpacing: "-0.03em",
+              letterSpacing: "-0.025em",
+              lineHeight: 1.12,
             }}
           >
             Acesso Administrativo

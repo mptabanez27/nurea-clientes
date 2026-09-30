@@ -14,6 +14,7 @@ export default async function ClientExclusivePage({
   if (!client) {
     return (
       <div
+        className="client-link-error"
         style={{
           minHeight: "100vh",
           display: "grid",
@@ -43,7 +44,7 @@ export default async function ClientExclusivePage({
             height="44"
             style={{ margin: "0 auto 24px", display: "block" }}
           />
-          <h1 style={{ fontSize: "21px", margin: "0 0 12px", color: "#f7f4ee", fontWeight: "600" }}>
+          <h1 style={{ fontSize: "21px", margin: "0 0 12px", color: "#f7f4ee", fontFamily: "var(--font-playfair), serif", fontWeight: "400", lineHeight: 1.15 }}>
             Link exclusivo não encontrado
           </h1>
           <p style={{ fontSize: "14px", color: "#a5b4ab", lineHeight: "1.6", margin: "0 0 28px" }}>

@@ -46,3 +46,13 @@
 - Edição de posts publicados liberada, arquivos removíveis/reordenáveis, capa para mídia principal, exclusão de post e remoção de logo.
 - Planejamento local com upload, substituição, remoção persistente, preview imagem/PDF, download e envio para aprovação.
 - Verificação: TypeScript e build de produção passaram. Navegador: aprovação altera card/contagem; comentário mantém aprovado; ajuste registra histórico e permite reenvio; dado operacional pode ser salvo/desmarcado em post publicado sem invalidar status; upload de imagem de planejamento, remoção e estado vazio após recarga confirmados. Desktop e viewport mobile 390×844 inspecionados. PDF e codecs de vídeo não foram exercitados neste ciclo.
+
+## 30/09/2026 — identidade visual compartilhada
+
+- A camada visual local foi alinhada à landing aprovada: tokens Nurea, Playfair local apenas em títulos de tela e Plus Jakarta Sans local no restante da interface.
+- Vidro limitado à navegação superior, controles de sobreposição e barra fixa de revisão; superfícies de dados e mídias seguem opacas. As imagens e logos dos clientes continuam sem tratamento da marca Nurea.
+- O escopo foi visual e documental. Feed mobile, planejamento, aprovações e pedidos de ajuste mantêm seus componentes e fluxos; não houve alteração de APIs, autenticação, permissões, dados ou armazenamento.
+- A alteração local já existente em next-env.d.ts foi preservada. Nenhum deploy ou envio de conteúdo foi feito.
+- Verificações finais: `npm run check -- --incremental false`, `npm run build` e `git diff --check` passaram. O build foi seguido da restauração byte a byte do `next-env.d.ts`; o diff local nos caminhos `.next/dev` permaneceu preservado.
+- Revisão visual em desktop e viewport mobile 390×844: conteúdo sem rolagem horizontal, grade de feed em duas colunas e foco de teclado visível no link para pular ao conteúdo. Movimento reduzido e fallback opaco/transparência foram conferidos no CSS; as preferências do sistema não foram emuladas no navegador.
+- O detector visual sinalizou somente Plus Jakarta Sans como fonte repetida, exigida pela identidade compartilhada. Não houve testes de domínio ou integração, pois nenhuma regra de negócio mudou; a prévia usou dados de demonstração com Supabase desativado.

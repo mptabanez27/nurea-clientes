@@ -39,3 +39,13 @@ Miniaturas leves e mídia completa sob demanda. Sem reprodução automática com
 Capa compacta e resumo recolhido deixam a prévia do feed mais próxima da entrada. A aprovação é a ação visual dominante em barra fixa de vidro fosco no detalhe. O aprovado tem símbolo de confirmação e texto, além da cor. Comentário e ajuste são ações distintas. No desktop, mídia e legenda ficam lado a lado; no celular, atalhos evitam rolagem longa. O diálogo restringe foco por teclado e torna o conteúdo de fundo inerte. Translucidez preserva fundos legíveis e respeita movimento reduzido.
 
 Na simulação do feed da Studio Rose, usar `@studiorosebrighenti`. O seletor discreto “Mês selecionado / Todo o portal” fica acima dos ícones da grade; a visão completa reúne as peças visíveis ao cliente de todos os ciclos, mais recentes primeiro. Ícones do Instagram são elementos visuais da prévia, sem botões fictícios de seguir, curtir ou salvar. Ações de aprovação e comentário permanecem nos controles próprios do portal.
+
+## Identidade visual compartilhada — 30/09/2026
+
+A landing aprovada em E:\dev\nurea (DESIGN.md, PRODUCT.md e .impeccable/design.json) é a referência visual comum. O portal usa verde profundo #0B1E18, off-white #F7F4EE, bege #E7DED2 e dourado #C7A56B como acento; #806136 fornece contraste para texto e foco em superfícies claras.
+
+A leitura, a navegação, as tabelas, os dados e os controles usam Plus Jakarta Sans, carregada localmente pelo Fontsource. Playfair, com o arquivo local Playfair-72pt-Regular.ttf, aparece apenas em títulos da interface, como títulos de tela e de seção. O logo oficial da Nurea permanece no menu; o símbolo continua pontual. A logo carregada por cada cliente fica independente da identidade Nurea.
+
+O vidro fosco fica restrito à navegação superior, aos controles sobrepostos do espaço do cliente e à barra fixa de revisão. Capa, cartões do feed, planejamento e superfícies de conteúdo são opacos. As peças e logos dos clientes não recebem filtro, zoom decorativo nem máscara da marca Nurea. O foco visível usa contorno de 2 px com dourado escuro sobre fundo claro e dourado sobre navegação escura. Movimento reduzido desativa animações e transições; transparência reduzida e navegadores sem backdrop-filter usam fundos opacos.
+
+Esta atualização é visual. Mantém a estrutura mobile-first de planejamento, feed, aprovação e pedido de ajustes, sem alterar texto factual, regras de negócio, APIs, autenticação, permissões, dados ou armazenamento. Nenhuma publicação foi feita.
